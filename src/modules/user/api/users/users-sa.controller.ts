@@ -1,0 +1,52 @@
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBasicAuth, ApiTags } from '@nestjs/swagger';
+import { UsersService } from '../../application/users/users.service';
+import { UsersQueryService } from '../../application/users/users.query-service';
+import { CreateUserInputDTO } from './input-dto/create-user.input-dto';
+import { GetUserListQueryInputDTO } from './input-dto/query/get-user-list-query.input-dto';
+import { PaginationMetaDataOutputDTO } from '../../../../core/pagination/output-dto/pagination-meta-data.output-dto';
+import { UserListOutputDTO, UserOutputDTO } from './output-dto/user.output-dto';
+import { BasicAuthGuard } from '../../../../core/guards/basic-auth/basic-auth.guard';
+import { SETTINGS } from '../../../../core/settings/settings';
+import { UsersSaControllerSwaggerDecorators } from '../../../../core/swagger/decorators/user-module/users-sa-controller.swagger-decorators';
+
+/*SA-контроллер для пользователей.*/
+@ApiTags(SETTINGS.USERS_SA_API_TAG)
+@ApiBasicAuth()
+@UseGuards(BasicAuthGuard)
+@Controller(SETTINGS.USERS_SA_PREFIX)
+export class UsersSaController {
+  public constructor(
+    private readonly usersService: UsersService,
+    private readonly usersQueryService: UsersQueryService
+  ) {}
+
+  /*001. POST-запрос по созданию пользователя.*/
+  @UsersSaControllerSwaggerDecorators.createUser
+  @Post(SETTINGS.USERS_SA_CREATE_USER_PATH)
+  @HttpCode(HttpStatus.CREATED)
+  public async createUser(@Body() body: CreateUserInputDTO): Promise<UserOutputDTO> {
+    /*Просим сервис "UsersService" создать пользователя.*/
+    return this.usersService.createConfirmedUser(body);
+  }
+
+  /*002. GET-запрос по поиску пользователей с пагинацией, используя query-параметры.*/
+  @UsersSaControllerSwaggerDecorators.getUserList
+  @Get(SETTINGS.USERS_SA_GET_USER_LIST_PATH)
+  @HttpCode(HttpStatus.OK)
+  public async getUserList(
+    @Query() query: GetUserListQueryInputDTO
+  ): Promise<PaginationMetaDataOutputDTO<UserListOutputDTO>> {
+    /*Просим query-сервис "UsersQueryService" найти пользователей.*/
+    return this.usersQueryService.findAll(query);
+  }
+
+  /*003. DELETE-запрос по удалению пользователя по ID, используя URI-параметры.*/
+  @UsersSaControllerSwaggerDecorators.deleteUserById
+  @Delete(SETTINGS.USERS_SA_DELETE_USER_BY_ID_PATH)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  public async deleteUserById(@Param('id') id: string): Promise<void> {
+    /*Просим сервис "UsersService" soft удалить пользователя по ID.*/
+    await this.usersService.markAsDeletedById(id);
+  }
+}
