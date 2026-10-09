@@ -28,10 +28,12 @@ import { TestingModule } from './testing/testing.module';
         database: coreConfig.DB_NAME,
         /*Автоматически регистрируем все сущности, которые были добавлены через "TypeOrmModule.forFeature()" в модулях
         приложения, иначе пришлось бы вручную перечислять все сущности в массиве "entities".*/
-        autoLoadEntities: false,
+        autoLoadEntities: true,
         /*Указываем, чтобы при каждом запуске приложения TypeORM автоматически сравнивал сущности с реальными таблицами
-        в БД и синхронизировал структуру.*/
-        synchronize: false,
+        в БД и синхронизировал структуру. Строго рекомендуется использовать только в окружении для разработки.*/
+        synchronize: true,
+        /*Включаем логирование SQL-запросов.*/
+        logging: false,
       }),
     }),
     ThrottlerModule.forRootAsync({

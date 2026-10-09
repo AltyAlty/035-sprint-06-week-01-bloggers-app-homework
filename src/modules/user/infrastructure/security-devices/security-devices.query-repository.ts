@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { SecurityDeviceListDb } from './types/security-device-db.type';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SecurityDevice, SecurityDeviceList } from '../../domain/security-devices/security-device.entity';
 
 /*Query-репозиторий для пользователей.*/
 @Injectable()
 export class SecurityDevicesQueryRepository {
-  public constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  public constructor(
+    @InjectRepository(SecurityDevice) private readonly securityDevicesRepository: Repository<SecurityDevice>
+  ) {}
 
   /*Метод для поиска пользовательских устройств по ID пользователя в БД.*/
-  public async findAllByUserId(userId: string): Promise<SecurityDeviceListDb> {
-    return await this.dataSource.query(`SELECT * FROM security_devices WHERE user_id = $1 AND deleted_at IS NULL`, [
-      userId,
-    ]);
+  public async findAllByUserId(userId: string): Promise<SecurityDeviceList> {
+    return this.securityDevicesRepository.findBy({ userId });
   }
 }

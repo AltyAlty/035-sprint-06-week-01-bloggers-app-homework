@@ -1,10 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PostsQueryRepository } from '../../../infrastructure/posts/posts.query-repository';
-import { PostDb, PostListDb } from '../../../infrastructure/posts/types/post-db.type';
-import { PostLikeDataDb, PostLikeDataListDb } from '../../../infrastructure/posts/types/post-like-data-db.type';
 import { ExtendedLikesInfoOutputDTO } from './extended-likes-info.output-dto';
 import { NewestPostLikeListOutputDTO, NewestPostLikeOutputDTO } from './newest-post-like.output-dto';
 import { PostLikeStatusOutputDTO } from './post-like-status.output-dto';
+import { Post, PostList } from '../../../domain/posts/post.entity';
+import { PostLikeData, PostLikeDataList } from '../../../domain/posts/post-like-data.entity';
 
 /*Output DTO для поста.*/
 export class PostOutputDTO {
@@ -36,23 +36,24 @@ export class PostOutputDTO {
   public extendedLikesInfo: ExtendedLikesInfoOutputDTO;
 
   /*Маппер для преобразования поста из БД в подготовленный для отправки клиенту пост.*/
-  public static mapFromPostDbToPostOutputDTO(
-    post: PostDb,
+  public static mapFromPostToPostOutputDTO(
+    post: Post,
+    blogName: string,
     likeStatus: PostLikeStatusOutputDTO,
     newestLikes: NewestPostLikeListOutputDTO
   ): PostOutputDTO {
     const postOutputDTO: PostOutputDTO = new PostOutputDTO();
     postOutputDTO.id = post.id;
     postOutputDTO.title = post.title;
-    postOutputDTO.shortDescription = post.short_description;
+    postOutputDTO.shortDescription = post.shortDescription;
     postOutputDTO.content = post.content;
-    postOutputDTO.blogId = post.blog_id;
-    postOutputDTO.blogName = post.blog_name;
-    postOutputDTO.createdAt = post.created_at;
+    postOutputDTO.blogId = post.blogId;
+    postOutputDTO.blogName = blogName;
+    postOutputDTO.createdAt = post.createdAt;
 
     postOutputDTO.extendedLikesInfo = {
-      likesCount: post.likes_count,
-      dislikesCount: post.dislikes_count,
+      likesCount: post.likesCount,
+      dislikesCount: post.dislikesCount,
       myStatus: likeStatus,
       newestLikes: newestLikes.map((postLikeData: NewestPostLikeOutputDTO) => ({
         addedAt: postLikeData.addedAt,
@@ -66,15 +67,15 @@ export class PostOutputDTO {
 
   /*Маппер для преобразования постов из БД в подготовленные для отправки клиенту посты. Использование здесь репозитория
   нарушает DDD - лучше логику этого маппера делать в сервисах.*/
-  public static async mapFromPostListDbToPostListOutputDTO(
-    posts: PostListDb,
+  public static async mapFromPostListToPostListOutputDTO(
+    posts: PostList,
     postsQueryRepository: PostsQueryRepository,
     userId: string | undefined
   ): Promise<PostListOutputDTO> {
     /*Если в виде постов был передан пустой массив, то возвращаем пустой массив.*/
     if (posts.length === 0) return [];
     /*Получаем ID постов.*/
-    const postIds: string[] = posts.map((post: PostDb): string => post.id);
+    const postIds: string[] = posts.map((post: Post): string => post.id);
     /*Создаем Map формата "postId: likeStatus", чтобы избежать многочисленных запросов в БД для получения статусов
     лайков пользователя каждого поста.*/
     let postLikesDataMap: Map<string, PostLikeStatusOutputDTO> = new Map<string, PostLikeStatusOutputDTO>();
@@ -83,16 +84,16 @@ export class PostOutputDTO {
     if (userId) {
       /*Просим query-репозиторий "PostsQueryRepository" найти данные о лайках постов по ID постов и ID пользователя в
       БД.*/
-      const postLikesData: PostLikeDataListDb = await postsQueryRepository.findAllPostLikesDataByPostIdsAndUserId(
+      const postLikesData: PostLikeDataList = await postsQueryRepository.findAllPostLikesDataByPostIdsAndUserId(
         postIds,
         userId
       );
 
       /*Заполняем Map статусами лайков пользователя каждого поста, не обращаясь в БД.*/
       postLikesDataMap = new Map(
-        postLikesData.map((postLikeData: PostLikeDataDb): [string, PostLikeStatusOutputDTO] => [
-          postLikeData.post_id,
-          postLikeData.like_status as unknown as PostLikeStatusOutputDTO,
+        postLikesData.map((postLikeData: PostLikeData): [string, PostLikeStatusOutputDTO] => [
+          postLikeData.postId,
+          postLikeData.likeStatus as unknown as PostLikeStatusOutputDTO,
         ])
       );
     }
@@ -104,7 +105,7 @@ export class PostOutputDTO {
       await postsQueryRepository.findLastThreeLikesForPostsByPostIds(postIds);
 
     /*Формируем массив подготовленных для отправки клиенту постов.*/
-    return posts.map((post: PostDb): PostOutputDTO => {
+    return posts.map((post: Post): PostOutputDTO => {
       /*Получаем ID поста.*/
       const postId: string = post.id;
       /*Получаем статус лайка поста.*/
@@ -112,7 +113,7 @@ export class PostOutputDTO {
       /*Получаем данные о трех последних лайках поста.*/
       const newestLikes: NewestPostLikeListOutputDTO = newestLikesMap.get(postId) ?? [];
       /*Преобразовываем пост из БД в подготовленный для отправки клиенту пост.*/
-      return this.mapFromPostDbToPostOutputDTO(post, likeStatus, newestLikes);
+      return this.mapFromPostToPostOutputDTO(post, post.blog.name, likeStatus, newestLikes);
     });
   }
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './api/auth/auth.controller';
 import { SecurityDevicesController } from './api/security-devices/security-devices.controller';
 import { UsersSaController } from './api/users/users-sa.controller';
@@ -18,11 +19,31 @@ import { CoreModule } from '../../core/core.module';
 import { AccessJwtAuthStrategy } from '../../core/guards/access-jwt-auth/access-jwt-auth.strategy';
 import { LocalAuthStrategy } from '../../core/guards/local-auth/local-auth.strategy';
 import { RefreshJwtAuthStrategy } from '../../core/guards/refresh-jwt-auth/refresh-jwt-auth.strategy';
+import { Comment } from '../blog/domain/comments/comment.entity';
+import { CommentLikeData } from '../blog/domain/comments/comment-like-data.entity';
 import { AuthConfigModule } from './config/auth-config.module';
+import { EmailConfirmation } from './domain/auth/email-confirmation.entity';
+import { PasswordRecoveryCodeData } from './domain/auth/password-recovery-code-data.entity';
+import { Session } from './domain/auth/session.entity';
+import { SecurityDevice } from './domain/security-devices/security-device.entity';
+import { User } from './domain/users/users.entity';
 
 /*Модуль для пользователей.*/
 @Module({
-  imports: [AuthConfigModule, CoreModule, PassportModule.register({ defaultStrategy: 'access-jwt' })],
+  imports: [
+    AuthConfigModule,
+    CoreModule,
+    PassportModule.register({ defaultStrategy: 'access-jwt' }),
+    TypeOrmModule.forFeature([
+      Comment,
+      CommentLikeData,
+      User,
+      EmailConfirmation,
+      PasswordRecoveryCodeData,
+      Session,
+      SecurityDevice,
+    ]),
+  ],
   controllers: [AuthController, SecurityDevicesController, UsersSaController],
   providers: [
     LocalAuthStrategy,

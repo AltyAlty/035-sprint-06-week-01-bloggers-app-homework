@@ -110,7 +110,7 @@ export class AuthController {
     return { accessToken };
   }
 
-  /*007. POST-запрос по получению новой пары AT и RT.*/
+  /*007. POST-запрос по получению новых AT и RT.*/
   @AuthControllerSwaggerDecorators.getNewAccessAndRefreshTokens
   @UseGuards(IpAndUserAgentGuard, RefreshJwtAuthGuard)
   @Post(SETTINGS.AUTH_GET_NEW_ACCESS_AND_REFRESH_TOKENS_PATH)
@@ -139,7 +139,7 @@ export class AuthController {
   public async revokeSession(
     @ExtractUserDataFromRequest() userRefreshJwtAuthContext: UserRefreshJwtAuthContextDTO
   ): Promise<void> {
-    /*Просим сервис "AuthService" отозвать сессию.*/
+    /*Просим сервис "AuthService" отозвать пользовательскую сессию.*/
     await this.authService.revokeSession(userRefreshJwtAuthContext);
   }
 

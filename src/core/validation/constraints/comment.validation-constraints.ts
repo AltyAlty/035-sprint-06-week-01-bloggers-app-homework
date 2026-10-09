@@ -7,4 +7,9 @@ export const COMMENT_VALIDATION_CONSTRAINTS = {
     MIN_LENGTH: 20,
     MAX_LENGTH: 300,
   },
+
+  LIKE_STATUS: {
+    MIN_LENGTH: 1,
+    MAX_LENGTH: 6,
+  },
 };

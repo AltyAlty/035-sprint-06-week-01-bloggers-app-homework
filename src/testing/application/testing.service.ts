@@ -11,16 +11,16 @@ export class TestingService {
   public async clearDb(): Promise<void> {
     await this.dataSource.query(`
       TRUNCATE TABLE 
-        users, 
-        email_confirmations, 
-        password_recovery_codes_data, 
-        security_devices, 
-        sessions,
-        blogs,
-        posts,
-        post_likes_data,
-        comments,
-        comment_likes_data
+        public.comment_likes_data,
+        public.post_likes_data,
+        public.comments,
+        public.posts,
+        public.blogs,
+        public.sessions,
+        public.security_devices,
+        public.password_recovery_codes_data,
+        public.email_confirmations,
+        public.users
       CASCADE;
     `);
   }

@@ -15,4 +15,9 @@ export const POST_VALIDATION_CONSTRAINTS = {
     MIN_LENGTH: 1,
     MAX_LENGTH: 1000,
   },
+
+  LIKE_STATUS: {
+    MIN_LENGTH: 1,
+    MAX_LENGTH: 6,
+  },
 };

@@ -1,49 +1,30 @@
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { BlogDb, BlogListDb } from './types/blog-db.type';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Blog } from '../../domain/blogs/blog.entity';
 
 /*Репозиторий для блогов.*/
 @Injectable()
 export class BlogsRepository {
-  public constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  public constructor(@InjectRepository(Blog) private blogsRepository: Repository<Blog>) {}
 
-  /*Метод для создания блога в БД.*/
-  public async create(dto: { name: string; description: string; websiteUrl: string }): Promise<BlogDb> {
-    const result: BlogListDb = await this.dataSource.query(
-      `INSERT INTO blogs (name, description, website_url) VALUES ($1, $2, $3) RETURNING *`,
-      [dto.name, dto.description, dto.websiteUrl]
-    );
-
-    return result[0];
+  /*Метод для сохранения блога в БД.*/
+  public async save(blog: Blog): Promise<void> {
+    await this.blogsRepository.save(blog);
   }
 
   /*Метод для поиска блога по ID в БД.*/
-  public async findById(id: string): Promise<BlogDb | null> {
-    const result: BlogListDb = await this.dataSource.query(`SELECT * FROM blogs WHERE id = $1 AND deleted_at IS NULL`, [
-      id,
-    ]);
-
-    return result[0] ?? null;
-  }
-
-  /*Метод для изменения блога по ID в БД.*/
-  public async updateById(id: string, dto: { name: string; description: string; websiteUrl: string }): Promise<void> {
-    await this.dataSource.query(`UPDATE blogs SET name = $1, description = $2, website_url = $3 WHERE id = $4`, [
-      dto.name,
-      dto.description,
-      dto.websiteUrl,
-      id,
-    ]);
+  public async findById(id: string): Promise<Blog | null> {
+    return await this.blogsRepository.findOneBy({ id });
   }
 
   /*Метод для soft удаления блога по ID в БД.*/
   public async markAsDeletedById(id: string): Promise<void> {
-    await this.dataSource.query(`UPDATE blogs SET deleted_at = $1 WHERE id = $2`, [new Date(), id]);
+    await this.blogsRepository.softDelete(id);
   }
 
   /*Метод для hard удаления блога по ID в БД.*/
   public async deleteById(id: string): Promise<void> {
-    await this.dataSource.query(`DELETE FROM blogs WHERE id = $1`, [id]);
+    await this.blogsRepository.delete(id);
   }
 }

@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Argon2Adapter } from '../../../../core/security/cryptography/argon2.adapter';
 import { CommentsRepository } from '../../../blog/infrastructure/comments/comments.repository';
 import { UsersRepository } from '../../infrastructure/users/users.repository';
-import { UserDb } from '../../infrastructure/users/types/user-db.type';
 import { UserOutputDTO } from '../../api/users/output-dto/user.output-dto';
+import { normalizeEmail } from '../../../../core/utils/email/normalize-email.util';
 import { DomainException, DomainExceptionCode } from '../../../../core/exceptions/domain/domain.exception';
+import { User } from '../../domain/users/users.entity';
 import { CreateUserDTO } from './dto/create-user.dto';
 
 /*Сервис для пользователей.*/
@@ -17,9 +18,15 @@ export class UsersService {
   ) {}
 
   /*Метод для создания пользователя.*/
-  public async create(dto: CreateUserDTO): Promise<string> {
+  public async create(dto: CreateUserDTO): Promise<string | UserOutputDTO> {
+    /*Получаем логин пользователя.*/
+    const login: string = dto.login;
+    /*Получаем email пользователя.*/
+    const email: string = dto.email;
+    /*Получаем флаг, обозначающий нужно ли создавать уже подтвержденного пользователя или нет.*/
+    const isConfirmed: boolean | undefined = dto.isConfirmed;
     /*Просим репозиторий "UsersRepository" найти пользователя по логину в БД.*/
-    let user: UserDb | null = await this.usersRepository.findByLogin(dto.login);
+    let user: User | null = await this.usersRepository.findByLogin(login);
 
     /*Если пользователь был найден, то выбрасываем исключение с информацией об этом.*/
     if (user)
@@ -30,7 +37,7 @@ export class UsersService {
       });
 
     /*Просим репозиторий "UsersRepository" найти пользователя по email в БД.*/
-    user = await this.usersRepository.findByEmail(dto.email);
+    user = await this.usersRepository.findByEmail(email);
 
     /*Если пользователь был найден, то выбрасываем исключение с информацией об этом.*/
     if (user)
@@ -42,52 +49,20 @@ export class UsersService {
 
     /*Если пользователь еще не был создан, то просим адаптер "Argon2Adapter" сгенерировать хеш для пароля.*/
     const passwordHash: string = await this.argon2Adapter.generatePasswordHash(dto.password);
-    /*Просим репозиторий "UsersRepository" создать пользователя в БД.*/
-    return await this.usersRepository.create({ login: dto.login, email: dto.email, passwordHash });
-  }
-
-  /*Метод для создания подтвержденного пользователя.*/
-  public async createConfirmedUser(dto: CreateUserDTO): Promise<UserOutputDTO> {
-    /*Просим репозиторий "UsersRepository" найти пользователя по логину в БД.*/
-    let user: UserDb | null = await this.usersRepository.findByLogin(dto.login);
-
-    /*Если пользователь был найден, то выбрасываем исключение с информацией об этом.*/
-    if (user)
-      throw new DomainException({
-        code: DomainExceptionCode.NotUniqueLoginToCreateUser,
-        message: 'Login must be unique',
-        field: 'login',
-      });
-
-    /*Просим репозиторий "UsersRepository" найти пользователя по email в БД.*/
-    user = await this.usersRepository.findByEmail(dto.email);
-
-    /*Если пользователь был найден, то выбрасываем исключение с информацией об этом.*/
-    if (user)
-      throw new DomainException({
-        code: DomainExceptionCode.NotUniqueEmailToCreateUser,
-        message: 'Email must be unique',
-        field: 'email',
-      });
-
-    /*Если пользователь еще не был создан, то просим адаптер "Argon2Adapter" сгенерировать хеш для пароля.*/
-    const passwordHash: string = await this.argon2Adapter.generatePasswordHash(dto.password);
-
-    /*Просим репозиторий "UsersRepository" создать подтвержденного пользователя в БД.*/
-    const createdUser: UserDb = await this.usersRepository.createConfirmed({
-      login: dto.login,
-      email: dto.email,
-      passwordHash,
-    });
-
-    /*Преобразовываем пользователя из БД в подготовленного для отправки клиенту пользователя и возвращаем его.*/
-    return UserOutputDTO.mapFromUserDbToUserOutputDTO(createdUser);
+    /*Просим сущность "User" создать пользователя.*/
+    user = User.create({ login, originalEmail: email, email: normalizeEmail(email), passwordHash, isConfirmed });
+    /*Просим репозиторий "UsersRepository" сохранить пользователя в БД.*/
+    await this.usersRepository.save(user);
+    /*Если нужно создать подтвержденного пользователя, то преобразовываем пользователя из БД в подготовленного для
+    отправки клиенту пользователя и возвращаем его, иначе возвращаем ID созданного пользователя.*/
+    if (isConfirmed) return UserOutputDTO.mapFromUserToUserOutputDTO(user);
+    return user.id;
   }
 
   /*Метод для soft удаления пользователя по ID.*/
   public async markAsDeletedById(id: string): Promise<void> {
     /*Просим репозиторий "UsersRepository" найти пользователя по ID в БД.*/
-    const user: UserDb | null = await this.usersRepository.findById(id);
+    const user: User | null = await this.usersRepository.findById(id);
 
     /*Если пользователь не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!user)
@@ -108,7 +83,7 @@ export class UsersService {
   /*Метод для hard удаления пользователя по ID.*/
   public async deleteById(id: string): Promise<void> {
     /*Просим репозиторий "UsersRepository" найти пользователя по ID в БД.*/
-    const user: UserDb | null = await this.usersRepository.findById(id);
+    const user: User | null = await this.usersRepository.findById(id);
 
     /*Если пользователь не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!user)

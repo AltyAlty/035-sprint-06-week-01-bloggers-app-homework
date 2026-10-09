@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { UserDb, UserListDb } from '../../../infrastructure/users/types/user-db.type';
+import { User, UserList } from '../../../domain/users/users.entity';
 
 /*Output DTO для пользователя.*/
 export class UserOutputDTO {
@@ -16,18 +16,18 @@ export class UserOutputDTO {
   public createdAt: Date;
 
   /*Маппер для преобразования пользователя из БД в подготовленного для отправки клиенту пользователя.*/
-  public static mapFromUserDbToUserOutputDTO(user: UserDb): UserOutputDTO {
+  public static mapFromUserToUserOutputDTO(user: User): UserOutputDTO {
     const userOutputDTO: UserOutputDTO = new UserOutputDTO();
     userOutputDTO.id = user.id.toString();
     userOutputDTO.login = user.login;
-    userOutputDTO.email = user.original_email;
-    userOutputDTO.createdAt = user.created_at;
+    userOutputDTO.email = user.originalEmail;
+    userOutputDTO.createdAt = user.createdAt;
     return userOutputDTO;
   }
 
   /*Маппер для преобразования пользователей из БД в подготовленных для отправки клиенту пользователей.*/
-  public static mapFromUserListDbToUserListOutputDTO(users: UserListDb): UserListOutputDTO {
-    return users.map((user: UserDb) => this.mapFromUserDbToUserOutputDTO(user));
+  public static mapFromUserListToUserListOutputDTO(users: UserList): UserListOutputDTO {
+    return users.map((user: User) => this.mapFromUserToUserOutputDTO(user));
   }
 }
 

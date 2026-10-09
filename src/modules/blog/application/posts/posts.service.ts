@@ -2,17 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { CommentsService } from '../comments/comments.service';
 import { BlogsRepository } from '../../infrastructure/blogs/blogs.repository';
 import { PostsRepository } from '../../infrastructure/posts/posts.repository';
-import { BlogDb } from '../../infrastructure/blogs/types/blog-db.type';
-import { PostDb } from '../../infrastructure/posts/types/post-db.type';
-import { PostLikeDataDb } from '../../infrastructure/posts/types/post-like-data-db.type';
 import { PostLikeStatusInputDTO } from '../../api/posts/input-dto/update-post-like-status-by-id.input-dto';
 import { PostOutputDTO } from '../../api/posts/output-dto/post.output-dto';
 import { PostLikeStatusOutputDTO } from '../../api/posts/output-dto/post-like-status.output-dto';
 import { DomainException, DomainExceptionCode } from '../../../../core/exceptions/domain/domain.exception';
 import { UserAccessJwtAuthContextDTO } from '../../../../core/guards/access-jwt-auth/dto/user-access-jwt-auth-context.dto';
+import { Blog } from '../../domain/blogs/blog.entity';
 import { PostLikeStatusDomainDTO } from '../../domain/posts/domain-dto/post-like-status.domain-dto';
+import { Post } from '../../domain/posts/post.entity';
+import { PostLikeData } from '../../domain/posts/post-like-data.entity';
 import { CreatePostForBlogDTO } from './dto/create-post-for-blog.dto';
-import { UpdatePostDTO } from './dto/update-post.dto';
+import { UpdatePostByIdDTO } from './dto/update-post-by-id.dto';
 import { UpdatePostLikeStatusByIdDTO } from './dto/update-post-like-status-by-id.dto';
 
 /*Сервис для постов.*/
@@ -25,9 +25,11 @@ export class PostsService {
   ) {}
 
   /*Метод для создания поста в блоге.*/
-  public async createForBlog(dto: CreatePostForBlogDTO, blogId: string): Promise<PostOutputDTO> {
+  public async createForBlog(dto: CreatePostForBlogDTO): Promise<PostOutputDTO> {
+    /*Получаем ID блога.*/
+    const blogId: string = dto.blogId;
     /*Просим репозиторий "BlogsRepository" найти блог по ID.*/
-    const blog: BlogDb | null = await this.blogsRepository.findById(blogId);
+    const blog: Blog | null = await this.blogsRepository.findById(blogId);
 
     /*Если блог не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!blog)
@@ -37,31 +39,35 @@ export class PostsService {
         field: 'blogId',
       });
 
-    /*Если блог был найден, то просим репозиторий "PostsRepository" создать пост в БД.*/
-    const post: PostDb | null = await this.postsRepository.create({ ...dto, blogId });
+    /*Если блог был найден, то просим сущность "Post" создать пост.*/
+    const post: Post = Post.create({ ...dto, blogId });
+    /*Просим репозиторий "postsRepository" сохранить пост в БД.*/
+    await this.postsRepository.save(post);
     /*Преобразовываем пост из БД в подготовленный для отправки клиенту пост и возвращаем его.*/
-    return PostOutputDTO.mapFromPostDbToPostOutputDTO(post, PostLikeStatusOutputDTO.None, []);
+    return PostOutputDTO.mapFromPostToPostOutputDTO(post, blog.name, PostLikeStatusOutputDTO.None, []);
   }
 
   /*Метод для изменения поста по ID.*/
-  public async updateById(id: string, dto: UpdatePostDTO): Promise<void> {
+  public async updateById(dto: UpdatePostByIdDTO): Promise<void> {
+    /*Получаем ID блога, в котором находится пост.*/
+    const blogId: string = dto.blogId;
+
     /*Проверяем существование блога.*/
-    if (dto.blogId) {
+    if (blogId) {
       /*Просим репозиторий "BlogsRepository" найти блог по ID.*/
-      const blog: BlogDb | null = await this.blogsRepository.findById(dto.blogId);
+      const blog: Blog | null = await this.blogsRepository.findById(blogId);
 
       /*Если блог не был найден, то выбрасываем исключение с информацией об этом.*/
-      if (!blog) {
+      if (!blog)
         throw new DomainException({
           code: DomainExceptionCode.BlogNotFoundWhilePostUpdating,
           message: 'Blog to update post not found',
           field: 'blogId',
         });
-      }
     }
 
     /*Просим репозиторий "PostsRepository" найти пост по ID в БД.*/
-    const post: PostDb | null = await this.postsRepository.findById(id);
+    const post: Post | null = await this.postsRepository.findById(dto.id);
 
     /*Если пост не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!post)
@@ -71,30 +77,32 @@ export class PostsService {
         field: 'id',
       });
 
-    /*Если пост был найден, то просим репозиторий "PostsRepository" изменить его в БД.*/
-    await this.postsRepository.updateById(id, dto);
+    /*Если пост был найден, то просим изменяем его.*/
+    post.update(dto);
+    /*Просим репозиторий "postsRepository" сохранить измененный пост в БД.*/
+    await this.postsRepository.save(post);
   }
 
   /*Метод для изменения статус лайка поста по ID поста.*/
   public async updatePostLikeStatusById(
-    id: string,
     dto: UpdatePostLikeStatusByIdDTO,
     userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<void> {
+    /*Получаем ID поста.*/
+    const postId: string = dto.id;
     /*Просим репозиторий "PostsRepository" найти пост по ID в БД.*/
-    const post: PostDb | null = await this.postsRepository.findById(id);
+    const post: Post | null = await this.postsRepository.findById(postId);
 
     /*Если пост не был найден, то выбрасываем исключение с информацией об этом.*/
-    if (!post) {
+    if (!post)
       throw new DomainException({
         code: DomainExceptionCode.PostNotFoundWhileUpdatingLikeStatus,
         message: 'Post to update like status not found',
         field: 'id',
       });
-    }
 
-    /*Получаем ID блога, в котором находиться пост.*/
-    const blogId: string = post.blog_id;
+    /*Получаем ID блога, в котором находится пост.*/
+    const blogId: string = post.blogId;
     /*Получаем ID пользователя.*/
     const userId: string = userAccessJwtAuthContext.id;
     /*Получаем статус лайка поста.*/
@@ -102,14 +110,14 @@ export class PostsService {
 
     /*Если пост был найден, то просим репозиторий "PostsRepository" найти данные о лайке для поста по ID поста и ID
     пользователя в БД.*/
-    const postLikeData: PostLikeDataDb | null = await this.postsRepository.findPostLikeDataByPostIdAndUserId(
-      id,
+    let postLikeData: PostLikeData | null = await this.postsRepository.findPostLikeDataByPostIdAndUserId(
+      postId,
       userId
     );
 
     /*Если пользователь пытается установить повторный статус лайка, то ничего не делаем.*/
     if (
-      (postLikeData && postLikeData.like_status === (likeStatus as unknown as PostLikeStatusDomainDTO)) ||
+      (postLikeData && postLikeData.likeStatus === (likeStatus as unknown as PostLikeStatusDomainDTO)) ||
       (!postLikeData && likeStatus === PostLikeStatusInputDTO.None)
     ) {
       return;
@@ -118,81 +126,80 @@ export class PostsService {
     /*Если пользователь хочет убрать лайк/дизлайк.*/
     if (likeStatus === PostLikeStatusInputDTO.None) {
       /*Просим репозиторий "PostsRepository" hard удалить данные о лайке поста по ID поста и ID пользователя в БД.*/
-      await this.postsRepository.deletePostLikeDataByPostIdAndUserId(id, userId);
+      await this.postsRepository.deletePostLikeDataByPostIdAndUserId(postId, userId);
 
-      /*Просим репозиторий "PostsRepository" изменить количество лайков и дизлайков у поста в БД:
-      1. Если уже стоял лайк, то уменьшить количество лайков на 1.
-      2. Если уже стоял дизлайк, то уменьшить количество дизлайков на 1.*/
-      if (postLikeData?.like_status === PostLikeStatusDomainDTO.Like) {
-        await this.postsRepository.updatePostLikesCountById(id, { likesCount: -1, dislikesCount: 0 });
+      /*Изменяем количество лайков и дизлайков у поста:
+      1. Если уже стоял лайк, то уменьшаем количество лайков на 1.
+      2. Если уже стоял дизлайк, то уменьшаем количество дизлайков на 1.*/
+      if (postLikeData?.likeStatus === PostLikeStatusDomainDTO.Like) {
+        post.updateLikesCount({ likesCount: -1, dislikesCount: 0 });
       } else {
-        await this.postsRepository.updatePostLikesCountById(id, { likesCount: 0, dislikesCount: -1 });
+        post.updateLikesCount({ likesCount: 0, dislikesCount: -1 });
       }
     }
 
     /*Если пользователь хочет поставить лайк.*/
     if (likeStatus === PostLikeStatusInputDTO.Like) {
-      /*Если еще не был поставлен лайк/дизлайк.*/
+      /*Если еще не был поставлен лайк.*/
       if (!postLikeData) {
-        /*Просим репозиторий "PostsRepository" создать данные о лайке поста в БД.*/
-        await this.postsRepository.createPostLikeData({
-          postId: id,
+        /*Просим сущность "PostLikeData" создать данные о лайке поста.*/
+        postLikeData = PostLikeData.create({
           blogId,
+          postId,
           userId,
           likeStatus: likeStatus as unknown as PostLikeStatusDomainDTO,
         });
 
-        /*Просим репозиторий "PostsRepository" изменить количество лайков и дизлайков у поста в БД:
-        1. Увеличить количество лайков на 1.
-        2. Не менять количество дизлайков.*/
-        await this.postsRepository.updatePostLikesCountById(id, { likesCount: 1, dislikesCount: 0 });
+        /*Изменяем количество лайков и дизлайков у поста:
+        1. Увеличиваем количество лайков на 1.
+        2. Не меняем количество дизлайков.*/
+        post.updateLikesCount({ likesCount: 1, dislikesCount: 0 });
         /*Если уже стоял дизлайк.*/
-      } else if (postLikeData.like_status === PostLikeStatusDomainDTO.Dislike) {
-        /*Просим репозиторий "PostsRepository" изменить данные о лайке поста в БД.*/
-        await this.postsRepository.updatePostLikeDataByPostIdAndUserId(
-          id,
-          userId,
-          likeStatus as unknown as PostLikeStatusDomainDTO
-        );
-
-        /*Просим репозиторий "PostsRepository" изменить количество лайков и дизлайков у поста в БД:
-        1. Увеличить количество лайков на 1.
-        2. Уменьшить количество дизлайков на 1.*/
-        await this.postsRepository.updatePostLikesCountById(id, { likesCount: 1, dislikesCount: -1 });
+      } else if (postLikeData.likeStatus === PostLikeStatusDomainDTO.Dislike) {
+        /*Изменяем статус лайка поста.*/
+        postLikeData.update({ likeStatus: likeStatus as unknown as PostLikeStatusDomainDTO });
+        /*Изменяем количество лайков и дизлайков у поста:
+        1. Увеличиваем количество лайков на 1.
+        2. Уменьшаем количество дизлайков на 1.*/
+        post.updateLikesCount({ likesCount: 1, dislikesCount: -1 });
       }
+
+      /*Просим репозиторий "postsRepository" сохранить измененные данные о лайке поста в БД.*/
+      await this.postsRepository.savePostLikeData(postLikeData);
     }
 
     /*Если пользователь хочет поставить дизлайк.*/
     if (likeStatus === PostLikeStatusInputDTO.Dislike) {
       /*Если еще не был поставлен лайк/дизлайк.*/
       if (!postLikeData) {
-        /*Просим репозиторий "PostsRepository" создать данные о лайке поста в БД.*/
-        await this.postsRepository.createPostLikeData({
-          postId: id,
+        /*Просим сущность "PostLikeData" создать данные о лайке поста.*/
+        postLikeData = PostLikeData.create({
           blogId,
+          postId,
           userId,
           likeStatus: likeStatus as unknown as PostLikeStatusDomainDTO,
         });
 
-        /*Просим репозиторий "PostsRepository" изменить количество лайков и дизлайков у поста в БД:
-        1. Не менять количество лайков.
-        2. Увеличить количество дизлайков на 1.*/
-        await this.postsRepository.updatePostLikesCountById(id, { likesCount: 0, dislikesCount: 1 });
+        /*Изменяем количество лайков и дизлайков у поста:
+        1. Не меняем количество лайков.
+        2. Увеличиваем количество дизлайков на 1.*/
+        post.updateLikesCount({ likesCount: 0, dislikesCount: 1 });
         /*Если уже стоял лайк.*/
-      } else if (postLikeData?.like_status === PostLikeStatusDomainDTO.Like) {
-        /*Просим репозиторий "PostsRepository" изменить данные о лайке поста в БД.*/
-        await this.postsRepository.updatePostLikeDataByPostIdAndUserId(
-          id,
-          userId,
-          likeStatus as unknown as PostLikeStatusDomainDTO
-        );
-
-        /*Просим репозиторий "PostsRepository" изменить количество лайков и дизлайков у поста в БД:
-        1. Уменьшить количество лайков на 1.
-        2. Увеличить количество дизлайков на 1.*/
-        await this.postsRepository.updatePostLikesCountById(id, { likesCount: -1, dislikesCount: 1 });
+      } else if (postLikeData?.likeStatus === PostLikeStatusDomainDTO.Like) {
+        /*Изменяем статус лайка поста.*/
+        postLikeData.update({ likeStatus: likeStatus as unknown as PostLikeStatusDomainDTO });
+        /*Изменяем количество лайков и дизлайков у поста:
+        1. Уменьшаем количество лайков на 1.
+        2. Увеличиваем количество дизлайков на 1.*/
+        post.updateLikesCount({ likesCount: -1, dislikesCount: 1 });
       }
+
+      /*Просим репозиторий "postsRepository" сохранить измененные данные о лайке поста в БД.*/
+      await this.postsRepository.savePostLikeData(postLikeData);
     }
+
+    /*Просим репозиторий "postsRepository" сохранить измененный пост в БД.*/
+    await this.postsRepository.save(post);
   }
 
   /*Метод для soft удаления поста по ID.*/
@@ -200,7 +207,7 @@ export class PostsService {
     /*Если был указан ID блога, то проверяем его существование.*/
     if (blogId) {
       /*Просим репозиторий "BlogsRepository" найти блог по ID.*/
-      const blog: BlogDb | null = await this.blogsRepository.findById(blogId);
+      const blog: Blog | null = await this.blogsRepository.findById(blogId);
 
       /*Если блог не был найден, то выбрасываем исключение с информацией об этом.*/
       if (!blog)
@@ -212,7 +219,7 @@ export class PostsService {
     }
 
     /*Просим репозиторий "PostsRepository" найти пост по ID в БД.*/
-    const post: PostDb | null = await this.postsRepository.findById(id);
+    const post: Post | null = await this.postsRepository.findById(id);
 
     /*Если пост не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!post)
@@ -235,7 +242,7 @@ export class PostsService {
     /*Если был указан ID блога, то проверяем его существование.*/
     if (blogId) {
       /*Просим репозиторий "BlogsRepository" найти блог по ID.*/
-      const blog: BlogDb | null = await this.blogsRepository.findById(blogId);
+      const blog: Blog | null = await this.blogsRepository.findById(blogId);
 
       /*Если блог не был найден, то выбрасываем исключение с информацией об этом.*/
       if (!blog)
@@ -247,7 +254,7 @@ export class PostsService {
     }
 
     /*Просим репозиторий "PostsRepository" найти пост по ID в БД.*/
-    const post: PostDb | null = await this.postsRepository.findById(id);
+    const post: Post | null = await this.postsRepository.findById(id);
 
     /*Если пост не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!post)
@@ -272,7 +279,7 @@ export class PostsService {
     /*Просим репозиторий "PostsRepository" soft удалить данные о лайках постов по ID блога в БД.*/
     await this.postsRepository.markAllPostLikeDataAsDeletedByBlogId(id);
     /*Просим репозиторий "PostsRepository" soft удалить посты по ID блога в БД.*/
-    await this.postsRepository.markAllAsDeleteByBlogId(id);
+    await this.postsRepository.markAllAsDeletedByBlogId(id);
   }
 
   /*Метод для hard удаления постов по ID блога.*/

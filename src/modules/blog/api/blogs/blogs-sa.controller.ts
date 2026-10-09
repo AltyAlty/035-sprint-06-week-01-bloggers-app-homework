@@ -64,7 +64,7 @@ export class BlogsSaController {
     @Body() body: CreatePostForBlogInputDTO
   ): Promise<PostOutputDTO> {
     /*Просим сервис "PostsService" создать пост в блоге.*/
-    return this.postsService.createForBlog(body, id);
+    return this.postsService.createForBlog({ blogId: id, ...body });
   }
 
   /*003. GET-запрос по поиску блогов с пагинацией, используя query-параметры.*/
@@ -100,7 +100,7 @@ export class BlogsSaController {
   @HttpCode(HttpStatus.NO_CONTENT)
   public async updateBlogById(@Param('id') id: string, @Body() body: UpdateBlogByIdInputDTO): Promise<void> {
     /*Просим сервис "BlogsService" изменить блог по ID.*/
-    await this.blogsService.updateById(id, body);
+    await this.blogsService.updateById({ id, ...body });
   }
 
   /*006. PUT-запрос по изменению поста по ID блога и ID поста, используя URI-параметры.*/
@@ -114,7 +114,7 @@ export class BlogsSaController {
     @Body() body: UpdatePostByBlogIdAndPostIdInputDTO
   ): Promise<void> {
     /*Просим сервис "PostsService" изменить пост по ID.*/
-    await this.postsService.updateById(postId, { ...body, blogId });
+    await this.postsService.updateById({ blogId, id: postId, ...body });
   }
 
   /*007. DELETE-запрос по удалению блога по ID, используя URI-параметры.*/

@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { CommentsQueryRepository } from '../../infrastructure/comments/comments.query-repository';
 import { PostsQueryRepository } from '../../infrastructure/posts/posts.query-repository';
-import { CommentLikeDataDb } from '../../infrastructure/comments/types/comment-like-data-db.type';
-import { CommentDb, CommentListDb } from '../../infrastructure/comments/types/comment-postgresql-db.type';
-import { PostDb } from '../../infrastructure/posts/types/post-db.type';
 import { GetCommentListByPostIdQueryInputDTO } from '../../api/posts/input-dto/query/get-comment-list-by-post-id-query.input-dto';
 import { PaginationMetaDataOutputDTO } from '../../../../core/pagination/output-dto/pagination-meta-data.output-dto';
 import { CommentListOutputDTO, CommentOutputDTO } from '../../api/comments/output-dto/comment.output-dto';
 import { CommentLikeStatusOutputDTO } from '../../api/comments/output-dto/comment-like-status.output-dto';
 import { DomainException, DomainExceptionCode } from '../../../../core/exceptions/domain/domain.exception';
+import { Comment, CommentList } from '../../domain/comments/comment.entity';
+import { CommentLikeData } from '../../domain/comments/comment-like-data.entity';
+import { Post } from '../../domain/posts/post.entity';
 
 /*Query-сервис для комментариев.*/
 @Injectable()
@@ -21,7 +21,7 @@ export class CommentsQueryService {
   /*Метод для поиска комментария по ID.*/
   public async findById(id: string, userId?: string): Promise<CommentOutputDTO> {
     /*Просим query-репозиторий "CommentsQueryRepository" найти комментарий по ID в БД.*/
-    const comment: CommentDb | null = await this.commentsQueryRepository.findById(id);
+    const comment: Comment | null = await this.commentsQueryRepository.findById(id);
 
     /*Если комментарий не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!comment)
@@ -37,15 +37,15 @@ export class CommentsQueryService {
     /*Если в запросе был указан AT.*/
     if (userId) {
       /*Просим query-репозиторий "CommentsQueryRepository" найти данные о лайке комментария в БД.*/
-      const commentLikeData: CommentLikeDataDb | null =
+      const commentLikeData: CommentLikeData | null =
         await this.commentsQueryRepository.findCommentLikeDataByCommentIdAndUserId(id, userId);
 
       /*Если данные о лайке комментария были найдены, то получаем статус лайка.*/
-      if (commentLikeData) likeStatus = commentLikeData.like_status as unknown as CommentLikeStatusOutputDTO;
+      if (commentLikeData) likeStatus = commentLikeData.likeStatus as unknown as CommentLikeStatusOutputDTO;
     }
 
     /*Преобразовываем комментарий из БД в подготовленный для отправки клиенту комментарий и возвращаем его.*/
-    return CommentOutputDTO.mapFromCommentDbToCommentOutputDTO(comment, likeStatus);
+    return CommentOutputDTO.mapFromCommentToCommentOutputDTO(comment, likeStatus, comment.user.login);
   }
 
   /*Метод для поиска комментариев по ID поста.*/
@@ -55,7 +55,7 @@ export class CommentsQueryService {
     userId?: string
   ): Promise<PaginationMetaDataOutputDTO<CommentListOutputDTO>> {
     /*Просим query-репозиторий "PostsQueryRepository" найти пост по ID в БД.*/
-    const post: PostDb | null = await this.postsQueryRepository.findById(postId);
+    const post: Post | null = await this.postsQueryRepository.findById(postId);
 
     /*Если пост не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!post)
@@ -66,11 +66,11 @@ export class CommentsQueryService {
       });
 
     /*Если пост был найден, то просим query-репозиторий "CommentsQueryRepository" найти комментарии по ID поста в БД.*/
-    const { items, totalCount }: { items: CommentListDb; totalCount: number } =
+    const { items, totalCount }: { items: CommentList; totalCount: number } =
       await this.commentsQueryRepository.findAllByPostId(postId, dto);
 
     /*Преобразовываем комментарии из БД в подготовленные для отправки клиенту комментарии.*/
-    const commentListOutput: CommentListOutputDTO = await CommentOutputDTO.mapFromCommentListDbToCommentListOutputDTO(
+    const commentListOutput: CommentListOutputDTO = await CommentOutputDTO.mapFromCommentListToCommentListOutputDTO(
       items,
       this.commentsQueryRepository,
       userId

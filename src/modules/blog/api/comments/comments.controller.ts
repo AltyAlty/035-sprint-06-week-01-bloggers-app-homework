@@ -46,7 +46,7 @@ export class CommentsController {
     @ExtractUserDataFromRequest() userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<void> {
     /*Просим сервис "CommentsService" изменить комментарий по ID.*/
-    await this.commentsService.updateById(id, body, userAccessJwtAuthContext);
+    await this.commentsService.updateById({ id, ...body }, userAccessJwtAuthContext);
   }
 
   /*003. PUT-запрос по изменению статуса лайка комментария по ID комментария, используя URI-параметры.*/
@@ -60,7 +60,7 @@ export class CommentsController {
     @ExtractUserDataFromRequest() userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<void> {
     /*Просим сервис "CommentsService" изменить статус лайка комментария по ID комментария.*/
-    await this.commentsService.updateCommentLikeStatusById(id, body, userAccessJwtAuthContext);
+    await this.commentsService.updateCommentLikeStatusById({ id, ...body }, userAccessJwtAuthContext);
   }
 
   /*004. DELETE-запрос по удалению комментария по ID, используя URI-параметры.*/

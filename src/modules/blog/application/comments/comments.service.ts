@@ -1,17 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { CommentsRepository } from '../../infrastructure/comments/comments.repository';
 import { PostsRepository } from '../../infrastructure/posts/posts.repository';
-import { CommentLikeDataDb } from '../../infrastructure/comments/types/comment-like-data-db.type';
-import { CommentDb } from '../../infrastructure/comments/types/comment-postgresql-db.type';
-import { PostDb } from '../../infrastructure/posts/types/post-db.type';
 import { CommentLikeStatusInputDTO } from '../../api/comments/input-dto/update-comment-like-status-by-id.input-dto';
 import { CommentOutputDTO } from '../../api/comments/output-dto/comment.output-dto';
 import { CommentLikeStatusOutputDTO } from '../../api/comments/output-dto/comment-like-status.output-dto';
 import { DomainException, DomainExceptionCode } from '../../../../core/exceptions/domain/domain.exception';
 import { UserAccessJwtAuthContextDTO } from '../../../../core/guards/access-jwt-auth/dto/user-access-jwt-auth-context.dto';
+import { Comment } from '../../domain/comments/comment.entity';
+import { CommentLikeData } from '../../domain/comments/comment-like-data.entity';
 import { CommentLikeStatusDomainDTO } from '../../domain/comments/domain-dto/comment-like-status.domain-dto';
+import { Post } from '../../domain/posts/post.entity';
 import { CreateCommentForPostDTO } from './dto/create-comment-for-post.dto';
-import { UpdateCommentDTO } from './dto/update-comment.dto';
+import { UpdateCommentByIdDTO } from './dto/update-comment-by-id.dto';
 import { UpdateCommentLikeStatusByIdDTO } from './dto/update-comment-like-status-by-id.dto';
 
 /*Сервис для комментариев.*/
@@ -24,12 +24,13 @@ export class CommentsService {
 
   /*Метод для создания комментария в посте.*/
   public async createForPost(
-    postId: string,
     dto: CreateCommentForPostDTO,
     userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<CommentOutputDTO> {
+    /*Получаем ID поста.*/
+    const postId: string = dto.postId;
     /*Просим репозиторий "PostsRepository" найти пост по ID.*/
-    const post: PostDb | null = await this.postsRepository.findById(postId);
+    const post: Post | null = await this.postsRepository.findById(postId);
 
     /*Если пост не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!post)
@@ -39,25 +40,32 @@ export class CommentsService {
         field: 'postId',
       });
 
-    const comment: CommentDb = await this.commentsRepository.create({
-      ...dto,
+    /*Если пост был найден, то просим сущность "Comment" создать комментарий.*/
+    const comment: Comment = Comment.create({
+      blogId: post.blogId,
       postId,
-      blogId: post.blog_id,
       userId: userAccessJwtAuthContext.id,
+      content: dto.content,
     });
 
+    /*Просим репозиторий "commentsRepository" сохранить комментарий в БД.*/
+    await this.commentsRepository.save(comment);
+
     /*Преобразовываем комментарий из БД в подготовленный для отправки клиенту комментарий и возвращаем его.*/
-    return CommentOutputDTO.mapFromCommentDbToCommentOutputDTO(comment, CommentLikeStatusOutputDTO.None);
+    return CommentOutputDTO.mapFromCommentToCommentOutputDTO(
+      comment,
+      CommentLikeStatusOutputDTO.None,
+      userAccessJwtAuthContext.login
+    );
   }
 
   /*Метод для изменения комментария по ID.*/
   public async updateById(
-    id: string,
-    dto: UpdateCommentDTO,
+    dto: UpdateCommentByIdDTO,
     userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<void> {
     /*Просим репозиторий "CommentsRepository" найти комментарий по ID в БД.*/
-    const comment: CommentDb | null = await this.commentsRepository.findById(id);
+    const comment: Comment | null = await this.commentsRepository.findById(dto.id);
 
     /*Если комментарий не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!comment)
@@ -68,40 +76,41 @@ export class CommentsService {
       });
 
     /*Если пользователь не является владельцем комментария, то выбрасываем исключение с информацией об этом.*/
-    if (comment.user_id !== userAccessJwtAuthContext.id)
+    if (comment.userId !== userAccessJwtAuthContext.id)
       throw new DomainException({
         code: DomainExceptionCode.WrongCommentOwnerWhileUpdating,
         message: 'The user is not the owner of the comment to update',
         field: 'id',
       });
 
-    /*Если комментарий был найден и пользователь является его владельцем, то просим репозиторий "commentsRepository"
-    изменить его.*/
-    await this.commentsRepository.updateById(id, dto);
+    /*Если комментарий был найден и пользователь является его владельцем, то просим изменяем его.*/
+    comment.update(dto);
+    /*Просим репозиторий "commentsRepository" сохранить измененный комментарий в БД.*/
+    await this.commentsRepository.save(comment);
   }
 
   /*Метод для изменения статус лайка комментария по ID комментария.*/
   public async updateCommentLikeStatusById(
-    id: string,
     dto: UpdateCommentLikeStatusByIdDTO,
     userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<void> {
+    /*Получаем ID комментария.*/
+    const commentId: string = dto.id;
     /*Просим репозиторий "CommentsRepository" найти комментарий по ID в БД.*/
-    const comment: CommentDb | null = await this.commentsRepository.findById(id);
+    const comment: Comment | null = await this.commentsRepository.findById(commentId);
 
     /*Если комментарий не был найден, то выбрасываем исключение с информацией об этом.*/
-    if (!comment) {
+    if (!comment)
       throw new DomainException({
         code: DomainExceptionCode.CommentNotFoundWhileUpdatingLikeStatus,
         message: 'Comment to update like status not found',
         field: 'id',
       });
-    }
 
-    /*Получаем ID блога, в котором находиться комментарий.*/
-    const blogId: string = comment.blog_id;
-    /*Получаем ID поста, в котором находиться комментарий.*/
-    const postId: string = comment.post_id;
+    /*Получаем ID блога, в котором находится комментарий.*/
+    const blogId: string = comment.blogId;
+    /*Получаем ID поста, в котором находится комментарий.*/
+    const postId: string = comment.postId;
     /*Получаем ID пользователя.*/
     const userId: string = userAccessJwtAuthContext.id;
     /*Получаем статус лайка комментария.*/
@@ -109,12 +118,14 @@ export class CommentsService {
 
     /*Если комментарий был найден, то просим репозиторий "CommentsRepository" найти данные о лайке для комментария по ID
     комментария и ID пользователя в БД.*/
-    const commentLikeData: CommentLikeDataDb | null =
-      await this.commentsRepository.findCommentLikeDataByCommentIdAndUserId(id, userId);
+    let commentLikeData: CommentLikeData | null = await this.commentsRepository.findCommentLikeDataByCommentIdAndUserId(
+      commentId,
+      userId
+    );
 
     /*Если пользователь пытается установить повторный статус лайка, то ничего не делаем.*/
     if (
-      (commentLikeData && commentLikeData.like_status === (likeStatus as unknown as CommentLikeStatusDomainDTO)) ||
+      (commentLikeData && commentLikeData.likeStatus === (likeStatus as unknown as CommentLikeStatusDomainDTO)) ||
       (!commentLikeData && likeStatus === CommentLikeStatusInputDTO.None)
     ) {
       return;
@@ -124,89 +135,88 @@ export class CommentsService {
     if (likeStatus === CommentLikeStatusInputDTO.None) {
       /*Просим репозиторий "CommentsRepository" hard удалить данные о лайке комментария по ID комментария и ID
       пользователя в БД.*/
-      await this.commentsRepository.deleteCommentLikeDataByCommentIdAndUserId(id, userId);
+      await this.commentsRepository.deleteCommentLikeDataByCommentIdAndUserId(commentId, userId);
 
-      /*Просим репозиторий "CommentsRepository" изменить количество лайков и дизлайков у комментария в БД:
-      1. Если уже стоял лайк, то уменьшить количество лайков на 1.
-      2. Если уже стоял дизлайк, то уменьшить количество дизлайков на 1.*/
-      if (commentLikeData?.like_status === CommentLikeStatusDomainDTO.Like) {
-        await this.commentsRepository.updateCommentLikesCountById(id, { likesCount: -1, dislikesCount: 0 });
+      /*Изменяем количество лайков и дизлайков у комментария:
+      1. Если уже стоял лайк, то уменьшаем количество лайков на 1.
+      2. Если уже стоял дизлайк, то уменьшаем количество дизлайков на 1.*/
+      if (commentLikeData?.likeStatus === CommentLikeStatusDomainDTO.Like) {
+        comment.updateLikesCount({ likesCount: -1, dislikesCount: 0 });
       } else {
-        await this.commentsRepository.updateCommentLikesCountById(id, { likesCount: 0, dislikesCount: -1 });
+        comment.updateLikesCount({ likesCount: 0, dislikesCount: -1 });
       }
     }
 
     /*Если пользователь хочет поставить лайк.*/
     if (likeStatus === CommentLikeStatusInputDTO.Like) {
-      /*Если еще не был поставлен лайк/дизлайк.*/
+      /*Если еще не был поставлен лайк.*/
       if (!commentLikeData) {
-        /*Просим репозиторий "CommentsRepository" создать данные о лайке комментария в БД.*/
-        await this.commentsRepository.createCommentLikeData({
-          commentId: id,
-          postId,
+        /*Просим сущность "CommentLikeData" создать данные о лайке комментария.*/
+        commentLikeData = CommentLikeData.create({
           blogId,
+          postId,
+          commentId,
           userId,
           likeStatus: likeStatus as unknown as CommentLikeStatusDomainDTO,
         });
 
-        /*Просим репозиторий "CommentsRepository" изменить количество лайков и дизлайков у комментария в БД:
-        1. Увеличить количество лайков на 1.
-        2. Не менять количество дизлайков.*/
-        await this.commentsRepository.updateCommentLikesCountById(id, { likesCount: 1, dislikesCount: 0 });
+        /*Изменяем количество лайков и дизлайков у комментария:
+        1. Увеличиваем количество лайков на 1.
+        2. Не меняем количество дизлайков.*/
+        comment.updateLikesCount({ likesCount: 1, dislikesCount: 0 });
         /*Если уже стоял дизлайк.*/
-      } else if (commentLikeData.like_status === CommentLikeStatusDomainDTO.Dislike) {
-        /*Просим репозиторий "CommentsRepository" изменить данные о лайке комментария в БД.*/
-        await this.commentsRepository.updateCommentLikeDataByCommentIdAndUserId(
-          id,
-          userId,
-          likeStatus as unknown as CommentLikeStatusDomainDTO
-        );
-
-        /*Просим репозиторий "CommentsRepository" изменить количество лайков и дизлайков у комментария в БД:
-        1. Увеличить количество лайков на 1.
-        2. Уменьшить количество дизлайков на 1.*/
-        await this.commentsRepository.updateCommentLikesCountById(id, { likesCount: 1, dislikesCount: -1 });
+      } else if (commentLikeData.likeStatus === CommentLikeStatusDomainDTO.Dislike) {
+        /*Изменяем статус лайка комментария.*/
+        commentLikeData.update({ likeStatus: likeStatus as unknown as CommentLikeStatusDomainDTO });
+        /*Изменяем количество лайков и дизлайков у комментария:
+        1. Увеличиваем количество лайков на 1.
+        2. Уменьшаем количество дизлайков на 1.*/
+        comment.updateLikesCount({ likesCount: 1, dislikesCount: -1 });
       }
+
+      /*Просим репозиторий "commentsRepository" сохранить измененные данные о лайке комментария в БД.*/
+      await this.commentsRepository.saveCommentLikeData(commentLikeData);
     }
 
     /*Если пользователь хочет поставить дизлайк.*/
     if (likeStatus === CommentLikeStatusInputDTO.Dislike) {
-      /*Если еще не был поставлен лайк/дизлайк.*/
+      /*Если еще не был поставлен дизлайк.*/
       if (!commentLikeData) {
-        /*Просим репозиторий "CommentsRepository" создать данные о лайке комментария в БД.*/
-        await this.commentsRepository.createCommentLikeData({
-          commentId: id,
-          postId,
+        /*Просим сущность "CommentLikeData" создать данные о лайке комментария.*/
+        commentLikeData = CommentLikeData.create({
           blogId,
+          postId,
+          commentId,
           userId,
           likeStatus: likeStatus as unknown as CommentLikeStatusDomainDTO,
         });
 
-        /*Просим репозиторий "CommentsRepository" изменить количество лайков и дизлайков у комментария в БД:
-        1. Не менять количество лайков.
-        2. Увеличить количество дизлайков на 1.*/
-        await this.commentsRepository.updateCommentLikesCountById(id, { likesCount: 0, dislikesCount: 1 });
+        /*Изменяем количество лайков и дизлайков у комментария:
+        1. Не меняем количество лайков.
+        2. Увеличиваем количество дизлайков на 1.*/
+        comment.updateLikesCount({ likesCount: 0, dislikesCount: 1 });
         /*Если уже стоял лайк.*/
-      } else if (commentLikeData?.like_status === CommentLikeStatusDomainDTO.Like) {
-        /*Просим репозиторий "CommentsRepository" изменить данные о лайке комментария в БД.*/
-        await this.commentsRepository.updateCommentLikeDataByCommentIdAndUserId(
-          id,
-          userId,
-          likeStatus as unknown as CommentLikeStatusDomainDTO
-        );
-
-        /*Просим репозиторий "CommentsRepository" изменить количество лайков и дизлайков у комментария в БД:
-        1. Уменьшить количество лайков на 1.
-        2. Увеличить количество дизлайков на 1.*/
-        await this.commentsRepository.updateCommentLikesCountById(id, { likesCount: -1, dislikesCount: 1 });
+      } else if (commentLikeData?.likeStatus === CommentLikeStatusDomainDTO.Like) {
+        /*Изменяем статус лайка комментария.*/
+        commentLikeData.update({ likeStatus: likeStatus as unknown as CommentLikeStatusDomainDTO });
+        /*Изменяем количество лайков и дизлайков у комментария:
+        1. Уменьшаем количество лайков на 1.
+        2. Увеличиваем количество дизлайков на 1.*/
+        comment.updateLikesCount({ likesCount: -1, dislikesCount: 1 });
       }
+
+      /*Просим репозиторий "commentsRepository" сохранить измененные данные о лайке комментария в БД.*/
+      await this.commentsRepository.saveCommentLikeData(commentLikeData);
     }
+
+    /*Просим репозиторий "commentsRepository" сохранить измененный комментарий в БД.*/
+    await this.commentsRepository.save(comment);
   }
 
   /*Метод для soft удаления комментария по ID.*/
   public async markAsDeletedById(id: string, userAccessJwtAuthContext: UserAccessJwtAuthContextDTO): Promise<void> {
     /*Просим репозиторий "CommentsRepository" найти комментарий по ID в БД.*/
-    const comment: CommentDb | null = await this.commentsRepository.findById(id);
+    const comment: Comment | null = await this.commentsRepository.findById(id);
 
     /*Если комментарий не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!comment)
@@ -217,7 +227,7 @@ export class CommentsService {
       });
 
     /*Если пользователь не является владельцем комментария, то выбрасываем исключение с информацией об этом.*/
-    if (comment.user_id !== userAccessJwtAuthContext.id)
+    if (comment.userId !== userAccessJwtAuthContext.id)
       throw new DomainException({
         code: DomainExceptionCode.WrongCommentOwnerWhileDeleting,
         message: 'The user is not the owner of the comment to delete',
@@ -234,7 +244,7 @@ export class CommentsService {
   /*Метод для hard удаления комментария по ID.*/
   public async deleteById(id: string, userAccessJwtAuthContext: UserAccessJwtAuthContextDTO): Promise<void> {
     /*Просим репозиторий "CommentsRepository" найти комментарий по ID в БД.*/
-    const comment: CommentDb | null = await this.commentsRepository.findById(id);
+    const comment: Comment | null = await this.commentsRepository.findById(id);
 
     /*Если комментарий не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!comment)
@@ -245,7 +255,7 @@ export class CommentsService {
       });
 
     /*Если пользователь не является владельцем комментария, то выбрасываем исключение с информацией об этом.*/
-    if (comment.user_id !== userAccessJwtAuthContext.id)
+    if (comment.userId !== userAccessJwtAuthContext.id)
       throw new DomainException({
         code: DomainExceptionCode.WrongCommentOwnerWhileDeleting,
         message: 'The user is not the owner of the comment to delete',

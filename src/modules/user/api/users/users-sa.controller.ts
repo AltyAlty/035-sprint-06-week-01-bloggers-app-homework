@@ -27,7 +27,7 @@ export class UsersSaController {
   @HttpCode(HttpStatus.CREATED)
   public async createUser(@Body() body: CreateUserInputDTO): Promise<UserOutputDTO> {
     /*Просим сервис "UsersService" создать пользователя.*/
-    return this.usersService.createConfirmedUser(body);
+    return (await this.usersService.create({ ...body, isConfirmed: true })) as UserOutputDTO;
   }
 
   /*002. GET-запрос по поиску пользователей с пагинацией, используя query-параметры.*/

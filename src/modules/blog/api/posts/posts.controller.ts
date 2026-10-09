@@ -41,7 +41,7 @@ export class PostsController {
     @ExtractUserDataFromRequest() userJwtAccessAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<CommentOutputDTO> {
     /*Просим сервис "CommentsService" создать комментарий в посте.*/
-    return this.commentsService.createForPost(id, body, userJwtAccessAuthContext);
+    return this.commentsService.createForPost({ postId: id, ...body }, userJwtAccessAuthContext);
   }
 
   /*002. GET-запрос по поиску поста по ID, используя URI-параметры.*/
@@ -95,6 +95,6 @@ export class PostsController {
     @ExtractUserDataFromRequest() userAccessJwtAuthContext: UserAccessJwtAuthContextDTO
   ): Promise<void> {
     /*Просим сервис "PostsService" изменить статус лайка поста по ID поста.*/
-    await this.postsService.updatePostLikeStatusById(id, body, userAccessJwtAuthContext);
+    await this.postsService.updatePostLikeStatusById({ id, ...body }, userAccessJwtAuthContext);
   }
 }

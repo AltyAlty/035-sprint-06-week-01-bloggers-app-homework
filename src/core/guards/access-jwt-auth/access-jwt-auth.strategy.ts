@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthService } from '../../../modules/user/application/auth/auth.service';
-import { UserDb } from '../../../modules/user/infrastructure/users/types/user-db.type';
 import { AuthConfig } from '../../../modules/user/config/auth.config';
+import { User } from '../../../modules/user/domain/users/users.entity';
 import { DomainException, DomainExceptionCode } from '../../exceptions/domain/domain.exception';
 import { AccessJwtPayloadDTO } from './dto/access-jwt-payload.dto';
 import { UserAccessJwtAuthContextDTO } from './dto/user-access-jwt-auth-context.dto';
@@ -30,7 +30,7 @@ export class AccessJwtAuthStrategy extends PassportStrategy(Strategy, 'access-jw
   декодированный payload из Access JWT.*/
   public async validate(payload: AccessJwtPayloadDTO): Promise<UserAccessJwtAuthContextDTO> {
     /*Просим сервис "AuthService" валидировать payload из Access JWT.*/
-    const user: UserDb | null = await this.authService.validateAccessJwtPayload(payload);
+    const user: User | null = await this.authService.validateAccessJwtPayload(payload);
 
     /*Если payload из Access JWT не был валидирован, то выбрасываем исключение "DomainException" с информацией об
     этом.*/

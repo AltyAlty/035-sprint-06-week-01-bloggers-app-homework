@@ -1588,10 +1588,10 @@ CREATE DATABASE "035-s-06-w-01-bloggers-app-hw"
 
 CREATE TABLE public.users (
 	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-	login VARCHAR NOT NULL UNIQUE,
-	original_email VARCHAR NOT NULL,
-	email VARCHAR NOT NULL UNIQUE,
-	password_hash VARCHAR NOT NULL,
+	login VARCHAR(10) NOT NULL UNIQUE,
+	original_email VARCHAR(1000) NOT NULL,
+	email VARCHAR(1000) NOT NULL UNIQUE,
+	password_hash VARCHAR(1000) NOT NULL,
 	is_confirmed BOOLEAN NOT NULL DEFAULT false,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	deleted_at TIMESTAMP DEFAULT NULL
@@ -1600,7 +1600,7 @@ CREATE TABLE public.users (
 CREATE TABLE public.email_confirmations (
 	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 	user_id UUID NOT NULL,
-	confirmation_code VARCHAR NOT NULL,
+	confirmation_code VARCHAR(100) NOT NULL,
 	expiration_date TIMESTAMP NOT NULL,
 	FOREIGN KEY (user_id)
 		REFERENCES public.users (id) MATCH SIMPLE
@@ -1611,7 +1611,7 @@ CREATE TABLE public.email_confirmations (
 CREATE TABLE public.password_recovery_codes_data (
 	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 	user_id UUID NOT NULL,
-	password_recovery_code VARCHAR NOT NULL,
+	password_recovery_code VARCHAR(100) NOT NULL,
 	expiration_date TIMESTAMP NOT NULL,
 	FOREIGN KEY (user_id)
 		REFERENCES public.users (id) MATCH SIMPLE
@@ -1622,8 +1622,8 @@ CREATE TABLE public.password_recovery_codes_data (
 CREATE TABLE public.security_devices (
 	device_id UUID PRIMARY KEY,
 	user_id UUID NOT NULL,
-	title VARCHAR NOT NULL,
-	ip VARCHAR NOT NULL,
+	title VARCHAR(1000) NOT NULL,
+	ip VARCHAR(100) NOT NULL,
 	last_active_date TIMESTAMP NOT NULL,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	FOREIGN KEY (user_id)
@@ -1651,9 +1651,9 @@ CREATE TABLE public.sessions (
 
 CREATE TABLE public.blogs (
 	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-	name VARCHAR NOT NULL,
-	description VARCHAR NOT NULL,
-	website_url VARCHAR NOT NULL,
+	name VARCHAR(15) NOT NULL,
+	description VARCHAR(500) NOT NULL,
+	website_url VARCHAR(100) NOT NULL,
 	is_membership BOOLEAN NOT NULL DEFAULT false,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	deleted_at TIMESTAMP DEFAULT NULL
@@ -1662,9 +1662,9 @@ CREATE TABLE public.blogs (
 CREATE TABLE public.posts (
 	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 	blog_id UUID NOT NULL,
-	title VARCHAR NOT NULL,
-	short_description VARCHAR NOT NULL,
-	content VARCHAR NOT NULL,
+	title VARCHAR(30) NOT NULL,
+	short_description VARCHAR(100) NOT NULL,
+	content VARCHAR(1000) NOT NULL,
 	likes_count INT NOT NULL DEFAULT 0 CHECK (likes_count >= 0),
 	dislikes_count INT NOT NULL DEFAULT 0 CHECK (dislikes_count >= 0),
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -1680,7 +1680,7 @@ CREATE TABLE public.post_likes_data (
 	post_id UUID NOT NULL,
 	blog_id UUID NOT NULL,
 	user_id UUID NOT NULL,
-	like_status VARCHAR NOT NULL CHECK (like_status IN ('Like', 'Dislike')),
+	like_status VARCHAR(6) NOT NULL CHECK (like_status IN ('Like', 'Dislike')),
 	added_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	deleted_at TIMESTAMP DEFAULT NULL,
 	UNIQUE (post_id, user_id),
@@ -1703,7 +1703,7 @@ CREATE TABLE public.comments (
 	post_id UUID NOT NULL,
 	blog_id UUID NOT NULL,
 	user_id UUID NOT NULL,
-	content VARCHAR NOT NULL,
+	content VARCHAR(300) NOT NULL,
 	likes_count INT NOT NULL DEFAULT 0 CHECK (likes_count >= 0),
 	dislikes_count INT NOT NULL DEFAULT 0 CHECK (dislikes_count >= 0),
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -1728,7 +1728,7 @@ CREATE TABLE public.comment_likes_data (
 	post_id UUID NOT NULL,
 	blog_id UUID NOT NULL,
 	user_id UUID NOT NULL,
-	like_status VARCHAR NOT NULL CHECK (like_status IN ('Like', 'Dislike')),
+	like_status VARCHAR(6) NOT NULL CHECK (like_status IN ('Like', 'Dislike')),
 	added_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	deleted_at TIMESTAMP DEFAULT NULL,
 	UNIQUE (comment_id, user_id),

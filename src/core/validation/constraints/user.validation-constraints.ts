@@ -16,6 +16,11 @@ export const USER_VALIDATION_CONSTRAINTS = {
     MIN_LENGTH: 1,
     MAX_LENGTH: 1000,
   },
+  ORIGINAL_EMAIL: {
+    MIN_LENGTH: 1,
+    MAX_LENGTH: 1000,
+    MATCHES: /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/,
+  },
   EMAIL: {
     MIN_LENGTH: 1,
     MAX_LENGTH: 1000,

@@ -7,17 +7,17 @@ import { UsersService } from '../users/users.service';
 import { AuthRepository } from '../../infrastructure/auth/auth.repository';
 import { SecurityDevicesRepository } from '../../infrastructure/security-devices/security-devices.repository';
 import { UsersRepository } from '../../infrastructure/users/users.repository';
-import { EmailConfirmationDb } from '../../infrastructure/auth/types/email-confirmation-db.type';
-import { PasswordRecoveryCodeDataDb } from '../../infrastructure/auth/types/password-recovery-code-data-db.type';
-import { SessionDb } from '../../infrastructure/auth/types/session-db.type';
-import { SecurityDeviceDb } from '../../infrastructure/security-devices/types/security-device-db.type';
-import { UserDb } from '../../infrastructure/users/types/user-db.type';
 import { DomainException, DomainExceptionCode } from '../../../../core/exceptions/domain/domain.exception';
 import { UserLocalAuthContextDTO } from '../../../../core/guards/local-auth/dto/user-local-auth-context.dto';
 import { UserRefreshJwtAuthContextDTO } from '../../../../core/guards/refresh-jwt-auth/dto/user-refresh-jwt-auth-context.dto';
 import { EmailManager } from '../../../../core/modules/notification/email-manager/email.manager';
 import { UserAgentAndIpDTO } from '../../api/auth/decorators/param-extraction/dto/user-agent-and-ip.dto';
 import { AuthConfig } from '../../config/auth.config';
+import { EmailConfirmation } from '../../domain/auth/email-confirmation.entity';
+import { PasswordRecoveryCodeData } from '../../domain/auth/password-recovery-code-data.entity';
+import { Session } from '../../domain/auth/session.entity';
+import { SecurityDevice } from '../../domain/security-devices/security-device.entity';
+import { User } from '../../domain/users/users.entity';
 import { ConfirmUserByCodeDTO } from './dto/confirm-user-by-code.dto';
 import { RegisterUserDTO } from './dto/register-user.dto';
 import { ResendConfirmationEmailDTO } from './dto/resend-confirmation-email.dto';
@@ -45,7 +45,7 @@ export class AuthService {
   /*Метод для регистрации пользователя.*/
   public async registerUser(dto: RegisterUserDTO): Promise<void> {
     /*Просим сервис "UsersService" создать пользователя.*/
-    const userId: string = await this.usersService.create(dto);
+    const userId: string = (await this.usersService.create(dto)) as string;
     /*Генерируем код подтверждения регистрации пользователя.*/
     const confirmationCode: string = randomUUID();
 
@@ -54,8 +54,8 @@ export class AuthService {
       minutes: this.authConfig.CONFIRMATION_REGISTRATION_CODE_EXPIRATION_TIME_IN_MINUTES,
     });
 
-    /*Просим репозиторий "AuthRepository" создать данные о подтверждении регистрации пользователя в БД.*/
-    await this.authRepository.createEmailConfirmation({ userId, confirmationCode, expirationDate });
+    /*Просим сущность "EmailConfirmation" создать данные о подтверждении регистрации пользователя.*/
+    EmailConfirmation.create({ userId, confirmationCode, expirationDate });
 
     /*Просим менеджер "EmailManager" отправить письмо о подтверждении регистрации пользователя. Если использовать здесь
     ключевое слово await, то при ошибке во время отправки письма будет происходить следующее:
@@ -77,7 +77,7 @@ export class AuthService {
   /*Метод для повторной отправки письма для подтверждения регистрации пользователя.*/
   public async resendConfirmationEmail(dto: ResendConfirmationEmailDTO): Promise<void> {
     /*Просим репозиторий "UsersRepository" найти пользователя по email в БД.*/
-    const user: UserDb | null = await this.usersRepository.findByEmail(dto.email);
+    const user: User | null = await this.usersRepository.findByEmail(dto.email);
 
     /*Если пользователь не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!user)
@@ -88,7 +88,7 @@ export class AuthService {
       });
 
     /*Если регистрация пользователя уже была подтверждена, то выбрасываем исключение с информацией об этом.*/
-    if (user.is_confirmed)
+    if (user.isConfirmed)
       throw new DomainException({
         code: DomainExceptionCode.AlreadyConfirmedUserRegistration,
         message: 'Registration has already been confirmed',
@@ -108,17 +108,17 @@ export class AuthService {
 
     /*Просим репозиторий "AuthRepository" найти данные о подтверждении регистрации пользователя по ID пользователя в
     БД.*/
-    const emailConfirmation: EmailConfirmationDb | null =
-      await this.authRepository.findEmailConfirmationByUserId(userId);
+    let emailConfirmation: EmailConfirmation | null = await this.authRepository.findEmailConfirmationByUserId(userId);
 
     /*Если данные о подтверждении регистрации пользователя были найдены, то просим репозиторий "AuthRepository" изменить
     их по ID пользователя в БД.*/
     if (emailConfirmation) {
-      await this.authRepository.updateEmailConfirmationByUserId(userId, { confirmationCode, expirationDate });
+      emailConfirmation.update({ confirmationCode, expirationDate });
     } else {
-      /*Если данные о подтверждении регистрации пользователя не были найдены, то просим репозиторий "AuthRepository"
-      создать такие данные в БД.*/
-      await this.authRepository.createEmailConfirmation({ userId, confirmationCode, expirationDate });
+      /*Если данные о подтверждении регистрации пользователя не были найдены, то создаем такие данные и просим
+      репозиторий "AuthRepository" сохранить их в БД.*/
+      emailConfirmation = EmailConfirmation.create({ userId, confirmationCode, expirationDate });
+      await this.authRepository.saveEmailConfirmation(emailConfirmation);
     }
 
     /*Просим менеджер "EmailManager" повторно отправить письмо о подтверждении регистрации пользователя.*/
@@ -131,9 +131,7 @@ export class AuthService {
   public async confirmByCode(dto: ConfirmUserByCodeDTO): Promise<void> {
     /*Просим репозиторий "AuthRepository" найти данные о подтверждении регистрации пользователя по коду подтверждения
     регистрации пользователя.*/
-    const emailConfirmation: EmailConfirmationDb | null = await this.authRepository.findEmailConfirmationByCode(
-      dto.code
-    );
+    const emailConfirmation: EmailConfirmation | null = await this.authRepository.findEmailConfirmationByCode(dto.code);
 
     /*Если данные о подтверждении регистрации пользователя не были найдены, то выбрасываем исключение с информацией об
     этом.*/
@@ -146,7 +144,7 @@ export class AuthService {
 
     /*Если срок действия кода подтверждения регистрации пользователя истек, то выбрасываем исключение с информацией об
     этом.*/
-    if (emailConfirmation.expiration_date <= new Date())
+    if (emailConfirmation.expirationDate <= new Date())
       throw new DomainException({
         code: DomainExceptionCode.ExpiredUserRegistrationConfirmationCode,
         message: 'Confirmation code is expired',
@@ -155,9 +153,9 @@ export class AuthService {
 
     /*Если данные о подтверждении регистрации пользователя были найдены и срок действия кода подтверждения регистрации
     пользователя не истек, то получаем ID пользователя.*/
-    const userId: string = emailConfirmation.user_id;
+    const userId: string = emailConfirmation.userId;
     /*Просим репозиторий "UsersRepository" найти пользователя по ID в БД.*/
-    const user: UserDb | null = await this.usersRepository.findById(userId);
+    const user: User | null = await this.usersRepository.findById(userId);
 
     /*Если пользователь не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!user)
@@ -168,25 +166,27 @@ export class AuthService {
       });
 
     /*Если регистрация пользователя уже была подтверждена, то выбрасываем исключение с информацией об этом.*/
-    if (user.is_confirmed)
+    if (user.isConfirmed)
       throw new DomainException({
         code: DomainExceptionCode.AlreadyConfirmedUserRegistration,
         message: 'Registration has already been confirmed',
         field: 'code',
       });
 
-    /*Если пользователь был найден и его регистрация еще не была подтверждена, то просим репозиторий "UsersRepository"
-    подтвердить регистрацию пользователя по ID пользователя в БД.*/
-    await this.usersRepository.confirmUserById(userId);
+    /*Если пользователь был найден и его регистрация еще не была подтверждена, то подтверждаем регистрацию
+    пользователя.*/
+    user.confirm();
+    /*Просим репозиторий "UsersRepository" сохранить измененного пользователя в БД.*/
+    await this.usersRepository.save(user);
     /*Просим репозиторий "AuthRepository" hard удалить все данные о подтверждении регистрации пользователя по ID
-    пользователя  в БД.*/
+    пользователя в БД.*/
     await this.authRepository.deleteAllEmailConfirmationsByUserId(userId);
   }
 
   /*Метод для отправки письма с кодом восстановления пароля пользователя.*/
   public async sendPasswordRecoveryCode(dto: SendPasswordRecoveryCodeDTO): Promise<void> {
     /*Просим репозиторий "UsersRepository" найти пользователя по email в БД.*/
-    const user: UserDb | null = await this.usersRepository.findByEmail(dto.email);
+    const user: User | null = await this.usersRepository.findByEmail(dto.email);
     /*Если пользователь не был найден, то завершаем работу метода, чтобы не возвращать ошибку клиенту.*/
     if (!user) return;
     /*Если пользователь был найден, то получаем ID пользователя.*/
@@ -201,21 +201,18 @@ export class AuthService {
 
     /*Просим репозиторий "AuthRepository" найти данные о коде восстановления пароля пользователя по ID пользователя в
     БД.*/
-    const passwordRecoveryCodeData: PasswordRecoveryCodeDataDb | null =
+    let passwordRecoveryCodeData: PasswordRecoveryCodeData | null =
       await this.authRepository.findRecoveryPasswordCodeDataByUserId(userId);
 
-    /*Если данные о коде восстановления пароля пользователя были найдены, то просим репозиторий "AuthRepository"
-    изменить их по ID пользователя в БД.*/
+    /*Если данные о коде восстановления пароля пользователя были найдены, то изменяем их, иначе создаем их.*/
     if (passwordRecoveryCodeData) {
-      await this.authRepository.updatePasswordRecoveryCodeDataByUserId(userId, {
-        passwordRecoveryCode,
-        expirationDate,
-      });
+      passwordRecoveryCodeData.update({ passwordRecoveryCode, expirationDate });
     } else {
-      /*Если данные о коде восстановления пароля пользователя не были найдены, то просим репозиторий "AuthRepository"
-      создать такие данные в БД.*/
-      await this.authRepository.createPasswordRecoveryCodeData({ userId, passwordRecoveryCode, expirationDate });
+      passwordRecoveryCodeData = PasswordRecoveryCodeData.create({ userId, passwordRecoveryCode, expirationDate });
     }
+
+    /*Просим репозиторий "AuthRepository" сохранить данные о коде восстановления пароля пользователя в БД.*/
+    await this.authRepository.savePasswordRecoveryCodeData(passwordRecoveryCodeData);
 
     /*Просим менеджер "EmailManager" отправить письмо с кодом восстановления пароля пользователя.*/
     this.emailManager
@@ -227,7 +224,7 @@ export class AuthService {
   public async updatePasswordByPasswordRecoveryCode(dto: UpdatePasswordByPasswordRecoveryCodeDTO): Promise<void> {
     /*Просим репозиторий "AuthRepository" найти данные о коде восстановления пароля пользователя по коду восстановления
     пароля пользователя в БД.*/
-    const passwordRecoveryCodeData: PasswordRecoveryCodeDataDb | null =
+    const passwordRecoveryCodeData: PasswordRecoveryCodeData | null =
       await this.authRepository.findRecoveryPasswordCodeDataByPasswordRecoveryCode(dto.recoveryCode);
 
     /*Если данные о коде восстановления пароля пользователя не были найдены, то выбрасываем исключение с информацией об
@@ -241,7 +238,7 @@ export class AuthService {
 
     /*Если срок действия кода восстановления пароля пользователя истек, то выбрасываем исключение с информацией об
     этом.*/
-    if (passwordRecoveryCodeData.expiration_date <= new Date())
+    if (passwordRecoveryCodeData.expirationDate <= new Date())
       throw new DomainException({
         code: DomainExceptionCode.ExpiredPasswordRecoveryCode,
         message: 'Password recovery code is expired',
@@ -249,9 +246,9 @@ export class AuthService {
       });
 
     /*Если данные о коде восстановления пароля пользователя были найдены, то получаем ID пользователя.*/
-    const userId: string = passwordRecoveryCodeData.user_id;
+    const userId: string = passwordRecoveryCodeData.userId;
     /*Просим репозиторий "UsersRepository" найти пользователя по ID в БД.*/
-    const user: UserDb | null = await this.usersRepository.findById(userId);
+    const user: User | null = await this.usersRepository.findById(userId);
 
     /*Если пользователь не был найден, то выбрасываем исключение с информацией об этом.*/
     if (!user)
@@ -263,8 +260,10 @@ export class AuthService {
 
     /*Если пользователь был найден, то просим адаптер "Argon2Adapter" сгенерировать хеш для пароля.*/
     const passwordHash: string = await this.argon2Adapter.generatePasswordHash(dto.password);
-    /*Просим репозиторий "UsersRepository" изменить хеш для пароля пользователя по ID пользователя в БД.*/
-    await this.usersRepository.updateUserPasswordHashById(userId, passwordHash);
+    /*Изменяем хеш для пароля пользователя.*/
+    user.updatePasswordHash(passwordHash);
+    /*Просим репозиторий "UsersRepository" сохранить измененного пользователя в БД.*/
+    await this.usersRepository.save(user);
     /*Просим репозиторий "AuthRepository" hard удалить данные о всех кодах восстановления пароля пользователя ID
     пользователя в БД.*/
     await this.authRepository.deleteAllRecoveryCodesDataByUserId(userId);
@@ -310,8 +309,8 @@ export class AuthService {
     const refreshTokenIatDate: Date = new Date(refreshTokenIat * 1000);
     const refreshTokenExpDate: Date = new Date(refreshTokenExp * 1000);
 
-    /*Просим репозиторий "SecurityDevicesRepository" создать пользовательское устройство в БД.*/
-    await this.securityDevicesRepository.create({
+    /*Создаем пользовательское устройство.*/
+    const securityDevice: SecurityDevice = SecurityDevice.create({
       deviceId,
       userId,
       title: userAgent,
@@ -319,19 +318,17 @@ export class AuthService {
       lastActiveDate: refreshTokenIatDate,
     });
 
-    /*Просим репозиторий "AuthRepository" создать сессию в БД.*/
-    await this.authRepository.createSession({
-      userId,
-      deviceId,
-      iat: refreshTokenIatDate,
-      exp: refreshTokenExpDate,
-    });
-
-    /*Возвращаем AT.*/
+    /*Просим репозиторий "SecurityDevicesRepository" сохранить пользовательское устройство в БД.*/
+    await this.securityDevicesRepository.save(securityDevice);
+    /*Создаем пользовательскую сессию.*/
+    const session: Session = Session.create({ userId, deviceId, iat: refreshTokenIatDate, exp: refreshTokenExpDate });
+    /*Просим репозиторий "AuthRepository" сохранить пользовательскую сессию в БД.*/
+    await this.authRepository.saveSession(session);
+    /*Возвращаем AT и RT.*/
     return { accessToken, refreshToken };
   }
 
-  /*Метод для создания новой пары AT и RT.*/
+  /*Метод для создания новых AT и RT.*/
   public async getNewAccessAndRefreshTokens(
     userRefreshJwtAuthContext: UserRefreshJwtAuthContextDTO,
     ipAndUserAgent: UserAgentAndIpDTO
@@ -371,21 +368,34 @@ export class AuthService {
     const refreshTokenIatDate: Date = new Date(refreshTokenIat * 1000);
     const refreshTokenExpDate: Date = new Date(refreshTokenExp * 1000);
 
-    /*Просим репозиторий "AuthRepository" изменить пользовательскую сессию по ID пользователя, ID пользовательского
+    /*Просим репозиторий "AuthRepository" найти пользовательскую сессию по ID пользователя, ID пользовательского
     устройства и дате выдачи RT в БД.*/
-    await this.authRepository.updateSessionByUserIdAndDeviceIdAndIat(userId, deviceId, userRefreshJwtAuthContext.iat, {
-      iat: refreshTokenIatDate,
-      exp: refreshTokenExpDate,
-    });
+    const session: Session | null = await this.authRepository.findSessionByUserIdAndDeviceIdAndIat(
+      userId,
+      deviceId,
+      userRefreshJwtAuthContext.iat
+    );
 
-    /*Просим репозиторий "SecurityDevicesRepository" изменить пользовательское устройство по ID в БД.*/
-    await this.securityDevicesRepository.updateById(deviceId, {
-      title: userAgent,
-      ip,
-      lastActiveDate: refreshTokenIatDate,
-    });
+    /*Если пользовательская сессия была найдена, то изменяем ее.*/
+    if (session) {
+      /*Изменяем пользовательскую сессию.*/
+      session.update({ iat: refreshTokenIatDate, exp: refreshTokenExpDate });
+      /*Просим репозиторий "AuthRepository" сохранить измененную пользовательскую сессию в БД.*/
+      await this.authRepository.saveSession(session);
+    }
 
-    /*Возвращаем AT.*/
+    /*Просим репозиторий "SecurityDevicesRepository" найти пользовательское устройство по ID в БД.*/
+    const securityDevice: SecurityDevice | null = await this.securityDevicesRepository.findById(deviceId);
+
+    /*Если пользовательское устройство было найдено, то изменяем его.*/
+    if (securityDevice) {
+      /*Изменяем пользовательское устройство.*/
+      securityDevice.update({ title: userAgent, ip, lastActiveDate: refreshTokenIatDate });
+      /*Просим репозиторий "securityDevicesRepository" сохранить измененное пользовательское устройство в БД.*/
+      await this.securityDevicesRepository.save(securityDevice);
+    }
+
+    /*Возвращаем новые AT и RT.*/
     return { accessToken, refreshToken };
   }
 
@@ -413,7 +423,7 @@ export class AuthService {
     /*Получаем ID пользователя.*/
     const userId: string = userRefreshJwtAuthContext.id;
     /*Просим репозиторий "SecurityDevicesRepository" найти пользовательское устройство по ID в БД.*/
-    const securityDevice: SecurityDeviceDb | null = await this.securityDevicesRepository.findById(deviceId);
+    const securityDevice: SecurityDevice | null = await this.securityDevicesRepository.findById(deviceId);
 
     /*Если пользовательское устройство не было найдено, то выбрасываем исключение с информацией об этом.*/
     if (!securityDevice)
@@ -425,7 +435,7 @@ export class AuthService {
 
     /*Если пользователь не является владельцем пользовательского устройства, то выбрасываем исключение с информацией об
     этом.*/
-    if (securityDevice.user_id !== userId)
+    if (securityDevice.userId !== userId)
       throw new DomainException({
         code: DomainExceptionCode.WrongSecurityDeviceOwnerWhileRevokingSessionBySecurityDeviceId,
         message: 'The user is not the owner of the security device to revoke a session',
@@ -433,8 +443,8 @@ export class AuthService {
       });
 
     /*Если пользователь является владельцем пользовательского устройства, то просим репозиторий "AuthRepository" hard
-    удалить пользовательскую сессию по ID пользователя, ID пользовательского устройства и дате выдачи RT в БД.*/
-    await this.authRepository.deleteSessionByUserIdAndDeviceIdAndIat(userId, deviceId, userRefreshJwtAuthContext.iat);
+    удалить пользовательскую сессию по ID пользователя и ID пользовательского устройства в БД.*/
+    await this.authRepository.deleteSessionByUserIdAndDeviceId(userId, deviceId);
     /*Просим репозиторий "SecurityDevicesRepository" удалить пользовательское устройство по ID в БД.*/
     await this.securityDevicesRepository.deleteById(deviceId);
   }
@@ -460,14 +470,14 @@ export class AuthService {
     dto: ValidateUserLocalAuthCredentialsDTO
   ): Promise<UserLocalAuthContextDTO | null> {
     /*Просим репозиторий "UsersRepository" найти пользователя по логину или email в БД.*/
-    const user: UserDb | null = await this.usersRepository.findByLoginOrEmail(dto.loginOrEmail);
+    const user: User | null = await this.usersRepository.findByLoginOrEmail(dto.loginOrEmail);
     /*Если пользователь не был найден, то возвращаем null.*/
     if (!user) return null;
     /*Если у пользователя не была подтверждена регистрация, то возвращаем null.*/
-    if (!user.is_confirmed) return null;
+    if (!user.isConfirmed) return null;
     /*Если пользователь был найден и его регистрация подтверждена, то просим адаптер "Argon2Adapter" валидировать
     пароль.*/
-    const isPasswordValid: boolean = await this.argon2Adapter.checkPasswordByHash(dto.password, user.password_hash);
+    const isPasswordValid: boolean = await this.argon2Adapter.checkPasswordByHash(dto.password, user.passwordHash);
     /*Если пароль оказался невалидным, то возвращаем null.*/
     if (!isPasswordValid) return null;
     /*Если пароль оказался валидным, то возвращаем ID пользователя.*/
@@ -475,13 +485,13 @@ export class AuthService {
   }
 
   /*Метод для валидации payload из Access JWT.*/
-  public async validateAccessJwtPayload(dto: ValidateAccessJwtPayloadDTO): Promise<UserDb | null> {
+  public async validateAccessJwtPayload(dto: ValidateAccessJwtPayloadDTO): Promise<User | null> {
     /*Просим репозиторий "UsersRepository" найти пользователя по ID в БД.*/
     return await this.usersRepository.findById(dto.userId);
   }
 
   /*Метод для валидации payload из Refresh JWT.*/
-  public async validateRefreshJwtPayload(dto: ValidateRefreshJwtPayloadDTO): Promise<UserDb | null> {
+  public async validateRefreshJwtPayload(dto: ValidateRefreshJwtPayloadDTO): Promise<User | null> {
     /*Получаем ID пользователя.*/
     const userId: string = dto.userId;
     /*Получаем ID пользовательского устройства.*/
@@ -489,7 +499,7 @@ export class AuthService {
 
     /*Просим репозиторий "AuthRepository" найти пользовательскую сессию по ID пользователя, ID пользовательского
     устройства и дате выдачи RT в БД.*/
-    const session: SessionDb | null = await this.authRepository.findSessionByUserIdAndDeviceIdAndIat(
+    const session: Session | null = await this.authRepository.findSessionByUserIdAndDeviceIdAndIat(
       userId,
       deviceId,
       new Date(dto.iat * 1000)
@@ -499,7 +509,7 @@ export class AuthService {
     if (!session) return null;
     /*Если пользовательская сессия была найдена, то просим репозиторий "SecurityDevicesRepository" найти
     пользовательское устройство по ID в БД.*/
-    const securityDevice: SecurityDeviceDb | null = await this.securityDevicesRepository.findById(deviceId);
+    const securityDevice: SecurityDevice | null = await this.securityDevicesRepository.findById(deviceId);
     /*Если пользовательское устройство не было найдено, то возвращаем null.*/
     if (!securityDevice) return null;
     /*Если пользовательская сессия и пользовательское устройство были найдены, то просим репозиторий "UsersRepository"

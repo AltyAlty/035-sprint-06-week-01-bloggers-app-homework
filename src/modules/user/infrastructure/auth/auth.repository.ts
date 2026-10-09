@@ -1,93 +1,56 @@
 import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { EmailConfirmationDb, EmailConfirmationListDb } from './types/email-confirmation-db.type';
-import {
-  PasswordRecoveryCodeDataDb,
-  PasswordRecoveryCodeDataListDb,
-} from './types/password-recovery-code-data-db.type';
-import { SessionDb, SessionListDb } from './types/session-db.type';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Not, Repository } from 'typeorm';
+import { EmailConfirmation } from '../../domain/auth/email-confirmation.entity';
+import { PasswordRecoveryCodeData } from '../../domain/auth/password-recovery-code-data.entity';
+import { Session } from '../../domain/auth/session.entity';
 
 /*Репозиторий для работы с аутентификацией и авторизацией.*/
 @Injectable()
 export class AuthRepository {
-  public constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  public constructor(
+    @InjectRepository(EmailConfirmation) private readonly emailConfirmationsRepository: Repository<EmailConfirmation>,
+    @InjectRepository(PasswordRecoveryCodeData)
+    private readonly passwordRecoveryCodesDataRepository: Repository<PasswordRecoveryCodeData>,
+    @InjectRepository(Session) private readonly sessionsRepository: Repository<Session>
+  ) {}
 
-  /*Метод для создания данных о подтверждении регистрации пользователя в БД.*/
-  public async createEmailConfirmation(dto: {
-    userId: string;
-    confirmationCode: string;
-    expirationDate: Date;
-  }): Promise<void> {
-    await this.dataSource.query(
-      `INSERT INTO email_confirmations (user_id, confirmation_code, expiration_date) VALUES ($1, $2, $3)`,
-      [dto.userId, dto.confirmationCode, dto.expirationDate]
-    );
+  /*Метод для сохранения данных о подтверждении регистрации пользователя в БД.*/
+  public async saveEmailConfirmation(emailConfirmation: EmailConfirmation): Promise<void> {
+    await this.emailConfirmationsRepository.save(emailConfirmation);
   }
 
-  /*Метод для создания данных о коде восстановления пароля пользователя в БД.*/
-  public async createPasswordRecoveryCodeData(dto: {
-    userId: string;
-    passwordRecoveryCode: string;
-    expirationDate: Date;
-  }): Promise<void> {
-    await this.dataSource.query(
-      `INSERT INTO password_recovery_codes_data (user_id, password_recovery_code, expiration_date) VALUES ($1, $2, $3)`,
-      [dto.userId, dto.passwordRecoveryCode, dto.expirationDate]
-    );
+  /*Метод для сохранения данных о коде восстановления пароля пользователя в БД.*/
+  public async savePasswordRecoveryCodeData(passwordRecoveryCodeData: PasswordRecoveryCodeData): Promise<void> {
+    await this.passwordRecoveryCodesDataRepository.save(passwordRecoveryCodeData);
   }
 
-  /*Метод для создания пользовательской сессии в БД.*/
-  public async createSession(dto: { userId: string; deviceId: string; iat: Date; exp: Date }): Promise<void> {
-    await this.dataSource.query(`INSERT INTO sessions (user_id, device_id, iat, exp) VALUES ($1, $2, $3, $4)`, [
-      dto.userId,
-      dto.deviceId,
-      dto.iat,
-      dto.exp,
-    ]);
+  /*Метод для сохранения пользовательской сессии в БД.*/
+  public async saveSession(session: Session): Promise<void> {
+    await this.sessionsRepository.save(session);
   }
 
   /*Метод для поиска данных о подтверждении регистрации пользователя по ID пользователя в БД.*/
-  public async findEmailConfirmationByUserId(userId: string): Promise<EmailConfirmationDb | null> {
-    const result: EmailConfirmationListDb = await this.dataSource.query(
-      `SELECT * FROM email_confirmations WHERE user_id = $1`,
-      [userId]
-    );
-
-    return result[0] ?? null;
+  public async findEmailConfirmationByUserId(userId: string): Promise<EmailConfirmation | null> {
+    return this.emailConfirmationsRepository.findOneBy({ userId });
   }
 
   /*Метод для поиска данных о подтверждении регистрации пользователя по коду подтверждения регистрации пользователя в
   БД.*/
-  public async findEmailConfirmationByCode(confirmationCode: string): Promise<EmailConfirmationDb | null> {
-    const result: EmailConfirmationListDb = await this.dataSource.query(
-      `SELECT * FROM email_confirmations WHERE confirmation_code = $1`,
-      [confirmationCode]
-    );
-
-    return result[0] ?? null;
+  public async findEmailConfirmationByCode(confirmationCode: string): Promise<EmailConfirmation | null> {
+    return this.emailConfirmationsRepository.findOneBy({ confirmationCode });
   }
 
   /*Метод для поиска данных о коде восстановления пароля пользователя по ID пользователя в БД.*/
-  public async findRecoveryPasswordCodeDataByUserId(userId: string): Promise<PasswordRecoveryCodeDataDb | null> {
-    const result: PasswordRecoveryCodeDataListDb = await this.dataSource.query(
-      `SELECT * FROM password_recovery_codes_data WHERE user_id = $1`,
-      [userId]
-    );
-
-    return result[0] ?? null;
+  public async findRecoveryPasswordCodeDataByUserId(userId: string): Promise<PasswordRecoveryCodeData | null> {
+    return this.passwordRecoveryCodesDataRepository.findOneBy({ userId });
   }
 
   /*Метод для поиска данных о коде восстановления пароля пользователя по коду восстановления пароля пользователя в БД.*/
   public async findRecoveryPasswordCodeDataByPasswordRecoveryCode(
     passwordRecoveryCode: string
-  ): Promise<PasswordRecoveryCodeDataDb | null> {
-    const result: PasswordRecoveryCodeDataListDb = await this.dataSource.query(
-      `SELECT * FROM password_recovery_codes_data WHERE password_recovery_code = $1`,
-      [passwordRecoveryCode]
-    );
-
-    return result[0] ?? null;
+  ): Promise<PasswordRecoveryCodeData | null> {
+    return this.passwordRecoveryCodesDataRepository.findOneBy({ passwordRecoveryCode });
   }
 
   /*Метод для поиска пользовательской сессии по ID пользователя, ID пользовательского устройства и дате выдачи RT в
@@ -96,69 +59,29 @@ export class AuthRepository {
     userId: string,
     deviceId: string,
     iat: Date
-  ): Promise<SessionDb | null> {
-    const result: SessionListDb = await this.dataSource.query(
-      `SELECT * FROM sessions WHERE user_id = $1 AND device_id = $2 AND iat = $3 AND deleted_at IS NULL`,
-      [userId, deviceId, iat]
-    );
-
-    return result[0] ?? null;
-  }
-
-  /*Метод для изменения данных о подтверждении регистрации пользователя по ID пользователя в БД.*/
-  public async updateEmailConfirmationByUserId(
-    userId: string,
-    dto: { confirmationCode: string; expirationDate: Date }
-  ): Promise<void> {
-    await this.dataSource.query(
-      `UPDATE email_confirmations SET confirmation_code = $1, expiration_date = $2 WHERE user_id = $3`,
-      [dto.confirmationCode, dto.expirationDate, userId]
-    );
-  }
-
-  /*Метод для изменения данных о коде восстановления пароля пользователя по ID пользователя в БД.*/
-  public async updatePasswordRecoveryCodeDataByUserId(
-    userId: string,
-    dto: { passwordRecoveryCode: string; expirationDate: Date }
-  ): Promise<void> {
-    await this.dataSource.query(
-      `UPDATE password_recovery_codes_data SET password_recovery_code = $1, expiration_date = $2 WHERE user_id = $3`,
-      [dto.passwordRecoveryCode, dto.expirationDate, userId]
-    );
-  }
-
-  /*Метод для изменения пользовательской сессии по ID пользователя, ID пользовательского устройства и дате выдачи RT в
-  БД.*/
-  public async updateSessionByUserIdAndDeviceIdAndIat(
-    userId: string,
-    deviceId: string,
-    iat: Date,
-    dto: { iat: Date; exp: Date }
-  ): Promise<void> {
-    await this.dataSource.query(
-      `UPDATE sessions SET iat = $1, exp = $2 WHERE user_id = $3 AND device_id = $4 AND iat = $5`,
-      [dto.iat, dto.exp, userId, deviceId, iat]
-    );
+  ): Promise<Session | null> {
+    return this.sessionsRepository.findOneBy({ userId, deviceId, iat });
   }
 
   /*Метод для hard удаления всех данных о подтверждении регистрации пользователя по ID пользователя в БД.*/
   public async deleteAllEmailConfirmationsByUserId(userId: string): Promise<void> {
-    await this.dataSource.query(`DELETE FROM email_confirmations WHERE user_id = $1`, [userId]);
+    await this.emailConfirmationsRepository.delete({ userId });
   }
 
   /*Метод для hard удаления данных о всех кодах восстановления пароля пользователя по ID пользователя в БД.*/
   public async deleteAllRecoveryCodesDataByUserId(userId: string): Promise<void> {
-    await this.dataSource.query(`DELETE FROM password_recovery_codes_data WHERE user_id = $1`, [userId]);
+    await this.passwordRecoveryCodesDataRepository.delete({ userId });
   }
 
   /*Метод для hard удаления пользовательской сессии по ID пользователя, ID пользовательского устройства и дате выдачи RT
   в БД.*/
   public async deleteSessionByUserIdAndDeviceIdAndIat(userId: string, deviceId: string, iat: Date): Promise<void> {
-    await this.dataSource.query(`DELETE FROM sessions WHERE user_id = $1 AND device_id = $2 AND iat = $3`, [
-      userId,
-      deviceId,
-      iat,
-    ]);
+    await this.sessionsRepository.delete({ userId, deviceId, iat });
+  }
+
+  /*Метод для hard удаления пользовательской сессии по ID пользователя и ID пользовательского устройства в БД.*/
+  public async deleteSessionByUserIdAndDeviceId(userId: string, deviceId: string): Promise<void> {
+    await this.sessionsRepository.delete({ userId, deviceId });
   }
 
   /*Метод для hard удаления всех пользовательских сессий по ID пользователя и ID пользовательского устройства в БД.*/
@@ -166,6 +89,6 @@ export class AuthRepository {
     userId: string,
     deviceId: string
   ): Promise<void> {
-    await this.dataSource.query(`DELETE FROM sessions WHERE user_id = $1 AND device_id != $2`, [userId, deviceId]);
+    await this.sessionsRepository.delete({ userId, deviceId: Not(deviceId) });
   }
 }

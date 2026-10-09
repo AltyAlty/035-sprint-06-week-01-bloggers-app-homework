@@ -1,8 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  SecurityDeviceDb,
-  SecurityDeviceListDb,
-} from '../../../infrastructure/security-devices/types/security-device-db.type';
+import { SecurityDevice, SecurityDeviceList } from '../../../domain/security-devices/security-device.entity';
 
 /*Output DTO для пользовательского устройства.*/
 export class SecurityDeviceOutputDTO {
@@ -20,23 +17,23 @@ export class SecurityDeviceOutputDTO {
 
   /*Маппер для преобразования пользовательского устройства из БД в подготовленное для отправки клиенту пользовательское
   устройство.*/
-  public static mapFromSecurityDeviceDbToSecurityDeviceOutputDTO(
-    securityDevice: SecurityDeviceDb
+  public static mapFromSecurityDeviceToSecurityDeviceOutputDTO(
+    securityDevice: SecurityDevice
   ): SecurityDeviceOutputDTO {
     const securityDeviceOutputDTO: SecurityDeviceOutputDTO = new SecurityDeviceOutputDTO();
     securityDeviceOutputDTO.ip = securityDevice.ip;
     securityDeviceOutputDTO.title = securityDevice.title;
-    securityDeviceOutputDTO.lastActiveDate = securityDevice.last_active_date;
-    securityDeviceOutputDTO.deviceId = securityDevice.device_id;
+    securityDeviceOutputDTO.lastActiveDate = securityDevice.lastActiveDate;
+    securityDeviceOutputDTO.deviceId = securityDevice.deviceId;
     return securityDeviceOutputDTO;
   }
 
   /*Маппер для преобразования блогов из БД в подготовленные для отправки клиенту блоги.*/
-  public static mapFromSecurityDeviceListDbToSecurityDeviceListOutputDTO(
-    securityDevices: SecurityDeviceListDb
+  public static mapFromSecurityDeviceListToSecurityDeviceListOutputDTO(
+    securityDevices: SecurityDeviceList
   ): SecurityDeviceListOutputDTO {
-    return securityDevices.map((securityDevice: SecurityDeviceDb) => {
-      return this.mapFromSecurityDeviceDbToSecurityDeviceOutputDTO(securityDevice);
+    return securityDevices.map((securityDevice: SecurityDevice) => {
+      return this.mapFromSecurityDeviceToSecurityDeviceOutputDTO(securityDevice);
     });
   }
 }
