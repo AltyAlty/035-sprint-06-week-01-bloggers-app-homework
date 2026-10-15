@@ -101,6 +101,7 @@ export class CommentLikeData {
 
   public update(dto: UpdateCommentLikeDataDomainDTO): void {
     this.likeStatus = dto.likeStatus;
+    this.addedAt = new Date();
   }
 }
 

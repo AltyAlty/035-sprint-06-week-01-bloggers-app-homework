@@ -88,6 +88,7 @@ export class PostLikeData {
 
   public update(dto: UpdatePostLikeDataDomainDTO): void {
     this.likeStatus = dto.likeStatus;
+    this.addedAt = new Date();
   }
 }
 
