@@ -55,7 +55,14 @@ export class AuthService {
     });
 
     /*Просим сущность "EmailConfirmation" создать данные о подтверждении регистрации пользователя.*/
-    EmailConfirmation.create({ userId, confirmationCode, expirationDate });
+    const emailConfirmation: EmailConfirmation = EmailConfirmation.create({
+      userId,
+      confirmationCode,
+      expirationDate,
+    });
+
+    /*Просим репозиторий "AuthRepository" сохранить данные о подтверждении регистрации пользователя в БД*/
+    this.authRepository.saveEmailConfirmation(emailConfirmation);
 
     /*Просим менеджер "EmailManager" отправить письмо о подтверждении регистрации пользователя. Если использовать здесь
     ключевое слово await, то при ошибке во время отправки письма будет происходить следующее:
